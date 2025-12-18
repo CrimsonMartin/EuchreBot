@@ -1,0 +1,144 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: euchre-postgres
+    environment:
+      POSTGRES_DB: euchrebot
+      POSTGRES_USER: euchre
+      POSTGRES_PASSWORD: euchre_dev_pass
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U euchre"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: euchre-redis
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  euchre-api:
+    build:
+      context: ./services/euchre-api
+      dockerfile: Dockerfile
+    container_name: euchre-api
+    environment:
+      FLASK_APP: app
+      FLASK_ENV: development
+      DATABASE_URL: postgresql://euchre:euchre_dev_pass@postgres:5432/euchrebot
+      REDIS_URL: redis://redis:6379/0
+    volumes:
+      - ./services/euchre-api:/app
+      - ./shared:/shared
+    ports:
+      - "127.0.0.1:5000:5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: flask run --host=0.0.0.0 --port=5000
+
+  web-ui:
+    build:
+      context: ./services/web-ui
+      dockerfile: Dockerfile
+    container_name: euchre-web-ui
+    environment:
+      FLASK_APP: app
+      FLASK_ENV: development
+      EUCHRE_API_URL: http://euchre-api:5000
+      REDIS_URL: redis://redis:6379/1
+      SECRET_KEY: dev-secret-key-change-in-production
+    volumes:
+      - ./services/web-ui:/app
+      - ./shared:/shared
+    ports:
+      - "127.0.0.1:5001:5001"
+    depends_on:
+      - euchre-api
+      - redis
+    command: flask run --host=0.0.0.0 --port=5001
+
+  cli:
+    build:
+      context: ./services/cli
+      dockerfile: Dockerfile
+    container_name: euchre-cli
+    environment:
+      EUCHRE_API_URL: http://euchre-api:5000
+    volumes:
+      - ./services/cli:/app
+      - ./shared:/shared
+    depends_on:
+      - euchre-api
+    stdin_open: true
+    tty: true
+    command: python app/main.py
+
+  ai-trainer:
+    build:
+      context: ./services/ai-trainer
+      dockerfile: Dockerfile
+    container_name: euchre-ai-trainer
+    environment:
+      DATABASE_URL: postgresql://euchre:euchre_dev_pass@postgres:5432/euchrebot
+      EUCHRE_API_URL: http://euchre-api:5000
+      CUDA_VISIBLE_DEVICES: "0"
+    volumes:
+      - ./services/ai-trainer:/app
+      - ./shared:/shared
+      - ai_models:/models
+    ports:
+      - "127.0.0.1:5002:5002"
+    depends_on:
+      - postgres
+      - euchre-api
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    command: python -m flask run --host=0.0.0.0 --port=5002
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: euchre-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@euchrebot.local
+      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_LISTEN_PORT: 5050
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    ports:
+      - "127.0.0.1:5050:5050"
+    depends_on:
+      - postgres
+
+volumes:
+  postgres_data:
+  redis_data:
+  ai_models:
+  pgadmin_data:
+
+networks:
+  default:
+    name: euchre-network
