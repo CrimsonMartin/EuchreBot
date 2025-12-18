@@ -35,7 +35,9 @@ The test suite covers:
 
 ### Running Tests Locally
 
-1. **Install dependencies:**
+**Note:** If you're using the devcontainer, all test dependencies are already installed!
+
+1. **Install dependencies (if not using devcontainer):**
    ```bash
    # Install euchre_core package
    cd shared/euchre_core
