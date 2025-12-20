@@ -169,11 +169,35 @@ def call_trump_action():
         return render_template("error.html", error=str(e))
 
 
+@main_bp.route("/game/discard", methods=["POST"])
+def discard_card():
+    """Dealer discards a card after picking up in round 1"""
+    game_id = session.get("game_id")
+    if not game_id:
+        return redirect(url_for("main.index"))
+
+    card = request.form.get("card")
+    api_url = current_app.config["EUCHRE_API_URL"]
+
+    try:
+        response = requests.post(
+            f"{api_url}/api/games/{game_id}/discard", json={"card": card}, timeout=5
+        )
+
+        if response.status_code == 200:
+            return redirect(url_for("main.play_game"))
+        else:
+            error = response.json().get("error", "Failed to discard card")
+            return render_template("error.html", error=error)
+    except Exception as e:
+        return render_template("error.html", error=str(e))
+
+
 @main_bp.route("/api/games/<game_id>/valid-moves", methods=["GET"])
 def get_valid_moves(game_id):
     """Proxy endpoint for getting valid moves from the euchre-api service"""
     from flask import jsonify
-    
+
     perspective = request.args.get("perspective", type=int)
     api_url = current_app.config["EUCHRE_API_URL"]
 
@@ -181,7 +205,7 @@ def get_valid_moves(game_id):
         params = {}
         if perspective is not None:
             params["perspective"] = perspective
-            
+
         response = requests.get(
             f"{api_url}/api/games/{game_id}/valid-moves",
             params=params,
