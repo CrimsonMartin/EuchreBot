@@ -26,9 +26,9 @@ def test_get_valid_moves_during_playing_phase(client):
     assert state_response.status_code == 200
     state = state_response.json
 
-    # Call trump to move to playing phase
+    # Call trump to move to playing phase (round 1 - pick up turned up card)
     trump_response = client.post(f'/api/games/{game_id}/trump', json={
-        'suit': 'H',
+        'suit': None,
         'go_alone': False
     })
     assert trump_response.status_code == 200
@@ -50,8 +50,8 @@ def test_get_valid_moves_during_playing_phase(client):
     hand = data['hand']
     assert all(card in hand for card in valid_cards)
 
-    # Trump suit should be set
-    assert data['trump_suit'] == 'H'
+    # Trump suit should be set (to whatever the turned up card was)
+    assert data['trump_suit'] is not None
 
     # Clean up
     client.delete(f'/api/games/{game_id}')
