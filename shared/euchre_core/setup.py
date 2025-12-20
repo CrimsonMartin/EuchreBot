@@ -9,5 +9,5 @@ setup(
     ],
     author="EuchreBot Team",
     description="Core Euchre game engine and logic",
-    python_requires=">=3.11",
+    python_requires=">=3.10",
 )
