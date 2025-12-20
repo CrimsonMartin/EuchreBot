@@ -89,10 +89,29 @@ h1 {
     background-color: rgba(0, 0, 0, 0.2);
 }
 
-.player-north { top: 10px; left: 50%; transform: translateX(-50%); }
-.player-east { right: 10px; top: 50%; transform: translateY(-50%); }
-.player-south { bottom: 10px; left: 50%; transform: translateX(-50%); }
-.player-west { left: 10px; top: 50%; transform: translateY(-50%); }
+.player-north {
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+.player-east {
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+.player-south {
+    bottom: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+.player-west {
+    left: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+}
 
 .card {
     width: 60px;
@@ -113,8 +132,13 @@ h1 {
     transform: translateY(-10px);
 }
 
-.card.red { color: #e74c3c; }
-.card.black { color: #2c3e50; }
+.card.red {
+    color: #e74c3c;
+}
+
+.card.black {
+    color: #2c3e50;
+}
 
 .scoreboard {
     background-color: var(--card-bg);
@@ -154,9 +178,9 @@ h1 {
 
 /* Card Highlighting Styles */
 .card.valid-card {
-    border-color: var(--success-color);
-    border-width: 3px;
-    box-shadow: 0 0 15px rgba(39, 174, 96, 0.5);
+    border-color: var(--success-color) !important;
+    border-width: 3px !important;
+    box-shadow: 0 0 15px rgba(39, 174, 96, 0.5) !important;
     animation: pulse-valid 2s infinite;
 }
 
@@ -176,9 +200,12 @@ h1 {
 }
 
 @keyframes pulse-valid {
-    0%, 100% {
+
+    0%,
+    100% {
         box-shadow: 0 0 15px rgba(39, 174, 96, 0.5);
     }
+
     50% {
         box-shadow: 0 0 25px rgba(39, 174, 96, 0.8);
     }

@@ -145,13 +145,21 @@
                 {% set pos = card_play.position %}
                 {% set card = card_play.card %}
                 {% if pos == 0 %}
-                <div class="trick-card south">{{ card }}</div>
+                <div class="trick-card south {% if card[-1] in ['H', 'D', '♥', '♦'] %}red{% else %}black{% endif %}">{{
+                    card }}
+                </div>
                 {% elif pos == 1 %}
-                <div class="trick-card west">{{ card }}</div>
+                <div class="trick-card west {% if card[-1] in ['H', 'D', '♥', '♦'] %}red{% else %}black{% endif %}">{{
+                    card }}
+                </div>
                 {% elif pos == 2 %}
-                <div class="trick-card north">{{ card }}</div>
+                <div class="trick-card north {% if card[-1] in ['H', 'D', '♥', '♦'] %}red{% else %}black{% endif %}">{{
+                    card }}
+                </div>
                 {% elif pos == 3 %}
-                <div class="trick-card east">{{ card }}</div>
+                <div class="trick-card east {% if card[-1] in ['H', 'D', '♥', '♦'] %}red{% else %}black{% endif %}">{{
+                    card }}
+                </div>
                 {% endif %}
                 {% endfor %}
             </div>
@@ -163,7 +171,9 @@
         <div class="scoreboard">
             <h2>Trump Selection</h2>
             {% if game_state.get('turned_up_card') %}
-            <p><strong>Turned Up Card:</strong> <span class="card">{{ game_state.get('turned_up_card') }}</span></p>
+            <p><strong>Turned Up Card:</strong> <span
+                    class="card {% if game_state.get('turned_up_card', '')[-1] in ['H', 'D', '♥', '♦'] %}red{% else %}black{% endif %}">{{
+                    game_state.get('turned_up_card') }}</span></p>
             {% endif %}
 
             {% if game_state.get('current_player_position') == player_position %}
@@ -203,12 +213,14 @@
             <h2>Dealer Discard</h2>
             <div style="text-align: center; padding: 20px;">
                 {% if game_state.get('current_player_position') == player_position %}
-                <p><strong>You picked up the {{ game_state.get('turned_up_card') }}!</strong></p>
+                <p><strong>You picked up the <span
+                            class="card {% if game_state.get('turned_up_card', '')[-1] in ['H', 'D', '♥', '♦'] %}red{% else %}black{% endif %}">{{
+                            game_state.get('turned_up_card') }}</span>!</strong></p>
                 <p><strong>Select a card to discard:</strong></p>
                 {% for card in game_state.get('hand', []) %}
                 <form method="POST" action="{{ url_for('main.discard_card') }}" style="display: inline;">
                     <button type="submit" name="card" value="{{ card }}"
-                        class="card {% if card[-1] in ['H', 'D'] %}red{% else %}black{% endif %}"
+                        class="card {% if card[-1] in ['H', 'D', '♥', '♦'] %}red{% else %}black{% endif %}"
                         style="background: white; border: 2px solid #ccc;">
                         {{ card }}
                     </button>
@@ -232,8 +244,8 @@
                 {% for card in game_state.get('hand', []) %}
                 <form method="POST" action="{{ url_for('main.play_card') }}" style="display: inline;">
                     <button type="submit" name="card" value="{{ card }}"
-                        class="card {% if card[-1] in ['H', 'D'] %}red{% else %}black{% endif %}"
-                        style="background: white; border: 2px solid #ccc;">
+                        class="card {% if card[-1] in ['H', 'D', '♥', '♦'] %}red{% else %}black{% endif %}"
+                        style="background: white;">
                         {{ card }}
                     </button>
                 </form>
@@ -241,7 +253,7 @@
                 {% else %}
                 <p>Waiting for {{ game_state.get('current_player') }} to play...</p>
                 {% for card in game_state.get('hand', []) %}
-                <div class="card {% if card[-1] in ['H', 'D'] %}red{% else %}black{% endif %}"
+                <div class="card {% if card[-1] in ['H', 'D', '♥', '♦'] %}red{% else %}black{% endif %}"
                     style="cursor: default; opacity: 0.6;">
                     {{ card }}
                 </div>
