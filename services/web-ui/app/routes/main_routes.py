@@ -167,3 +167,30 @@ def call_trump_action():
             return render_template("error.html", error=error)
     except Exception as e:
         return render_template("error.html", error=str(e))
+
+
+@main_bp.route("/api/games/<game_id>/valid-moves", methods=["GET"])
+def get_valid_moves(game_id):
+    """Proxy endpoint for getting valid moves from the euchre-api service"""
+    from flask import jsonify
+    
+    perspective = request.args.get("perspective", type=int)
+    api_url = current_app.config["EUCHRE_API_URL"]
+
+    try:
+        params = {}
+        if perspective is not None:
+            params["perspective"] = perspective
+            
+        response = requests.get(
+            f"{api_url}/api/games/{game_id}/valid-moves",
+            params=params,
+            timeout=5,
+        )
+
+        if response.status_code == 200:
+            return jsonify(response.json())
+        else:
+            return jsonify({"error": "Failed to get valid moves"}), response.status_code
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500

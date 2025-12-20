@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>EuchreBot - Game</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="{{ url_for('static', filename='js/game.js') }}" defer></script>
     <style>
         .card {
             display: inline-block;
@@ -196,10 +197,35 @@
         </div>
         {% endif %}
 
+        <!-- Dealer Discard Phase -->
+        {% if game_state.get('phase') == 'dealer_discard' %}
+        <div class="scoreboard">
+            <h2>Dealer Discard</h2>
+            <div style="text-align: center; padding: 20px;">
+                {% if game_state.get('current_player_position') == player_position %}
+                <p><strong>You picked up the {{ game_state.get('turned_up_card') }}!</strong></p>
+                <p><strong>Select a card to discard:</strong></p>
+                {% for card in game_state.get('hand', []) %}
+                <form method="POST" action="{{ url_for('main.discard_card') }}" style="display: inline;">
+                    <button type="submit" name="card" value="{{ card }}"
+                        class="card {% if card[-1] in ['H', 'D'] %}red{% else %}black{% endif %}"
+                        style="background: white; border: 2px solid #ccc;">
+                        {{ card }}
+                    </button>
+                </form>
+                {% endfor %}
+                {% else %}
+                <p>Waiting for {{ game_state.get('current_player') }} (dealer) to discard a card...</p>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
         <!-- Player's Hand -->
         {% if game_state.get('hand') and game_state.get('phase') == 'playing' %}
         <div class="scoreboard">
             <h2>Your Hand</h2>
+            <div id="valid-moves-info"></div>
             <div style="text-align: center; padding: 20px;">
                 {% if game_state.get('current_player_position') == player_position %}
                 <p><strong>Your turn! Play a card:</strong></p>
@@ -240,6 +266,13 @@
             <a href="{{ url_for('main.index') }}" class="btn btn-secondary">Exit Game</a>
         </div>
     </div>
+
+    <script>
+        // Initialize the game UI with valid moves polling
+        {% if game_state.get('game_id') and game_state.get('phase') == 'playing' %}
+        initializeGame('{{ game_state.get("game_id") }}', {{ player_position }});
+        {% endif %}
+    </script>
 
 </body>
 

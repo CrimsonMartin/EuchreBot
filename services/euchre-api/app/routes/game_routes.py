@@ -74,6 +74,18 @@ def process_ai_turns(game: EuchreGame, max_iterations=10):
                     game.pass_trump()
                     ai_played = True
 
+        elif game.state.phase == GamePhase.DEALER_DISCARD:
+            # Dealer must discard a card after picking up
+            dealer = game.state.get_player(game.state.dealer_position)
+            if dealer.hand:
+                # Simple AI: discard a random card (could be smarter)
+                card_to_discard = random.choice(dealer.hand)
+                game.dealer_discard(card_to_discard)
+                ai_played = True
+            else:
+                # No cards to discard - shouldn't happen
+                break
+
         elif game.state.phase == GamePhase.PLAYING:
             # Playing phase - play a random valid card
             valid_cards = game.get_valid_moves(game.state.current_player_position)
@@ -316,6 +328,79 @@ def call_trump(game_id):
             )
     except Exception as e:
         return jsonify({"error": str(e)}), 400
+
+
+@game_bp.route("/games/<game_id>/discard", methods=["POST"])
+def dealer_discard_card(game_id):
+    """Dealer discards a card after picking up in round 1"""
+    data = request.json
+    card_str = data.get("card")
+
+    if not card_str:
+        return jsonify({"error": "Card required"}), 400
+
+    try:
+        card = Card.from_string(card_str)
+    except Exception as e:
+        return jsonify({"error": f"Invalid card: {str(e)}"}), 400
+
+    # Load game from Redis
+    game = load_game_from_redis(game_id)
+    if not game:
+        return jsonify({"error": "Game not found"}), 404
+
+    try:
+        # Discard the card
+        game.dealer_discard(card)
+
+        # Process AI turns after dealer discards
+        process_ai_turns(game)
+
+        # Save updated game state
+        save_game_to_redis(game)
+
+        return jsonify({"success": True, "state": game.get_state()})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+
+@game_bp.route("/games/<game_id>/valid-moves", methods=["GET"])
+def get_valid_moves(game_id):
+    """Get valid moves for a player"""
+    perspective = request.args.get("perspective", type=int)
+
+    # Load game from Redis
+    game = load_game_from_redis(game_id)
+    if not game:
+        return jsonify({"error": "Game not found"}), 404
+
+    # Determine which player's valid moves to get
+    player_position = (
+        perspective if perspective is not None else game.state.current_player_position
+    )
+
+    # Get valid moves for the player
+    valid_cards = game.get_valid_moves(player_position)
+
+    # Get the player's hand for context
+    player = game.state.get_player(player_position)
+    hand = player.hand.copy()
+
+    # Build response
+    response = {
+        "player_position": player_position,
+        "valid_cards": [str(card) for card in valid_cards],
+        "hand": [str(card) for card in hand],
+        "must_follow_suit": len(valid_cards) < len(hand) if hand else False,
+        "current_trick_lead_suit": (
+            game.state.current_trick.lead_suit.value
+            if game.state.current_trick
+            else None
+        ),
+        "trump_suit": game.state.trump.value if game.state.trump else None,
+    }
+
+    return jsonify(response)
 
 
 @game_bp.route("/games/<game_id>", methods=["DELETE"])
