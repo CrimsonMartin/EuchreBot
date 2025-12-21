@@ -103,13 +103,24 @@ def training():
         population_size = request.form.get("population_size", 20, type=int)
         generations = request.form.get("generations", 10, type=int)
 
-        # TODO: Call the AI trainer API to start training
-        # For now, just redirect back to training page
-        # api_url = current_app.config.get('AI_TRAINER_URL', 'http://ai-trainer:5002')
-        # response = requests.post(f"{api_url}/api/training", json={
-        #     'population_size': population_size,
-        #     'generations': generations
-        # })
+        # Call the AI trainer API to start training
+        api_url = current_app.config.get("AI_TRAINER_URL", "http://ai-trainer:5002")
+        try:
+            response = requests.post(
+                f"{api_url}/api/train/start",
+                json={"population_size": population_size, "generations": generations},
+                timeout=10,
+            )
+
+            if response.status_code == 200:
+                # Training started successfully
+                pass
+            else:
+                # Handle error
+                pass
+        except Exception as e:
+            # Handle connection error
+            print(f"Error starting training: {e}")
 
         return redirect(url_for("main.training"))
 
