@@ -43,8 +43,8 @@ def process_ai_turns(game: EuchreGame, max_iterations=10):
         ]:
             # Trump selection phase
             if game.state.phase == GamePhase.TRUMP_SELECTION_ROUND1:
-                # Simple AI: 50% chance to call trump in round 1
-                if random.random() < 0.5:
+                # Simple AI: 10% chance to call trump in round 1
+                if random.random() < 0.1:
                     game.call_trump(suit=None, go_alone=False)
                     ai_played = True
                 else:

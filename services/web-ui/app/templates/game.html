@@ -322,6 +322,22 @@
         </div>
         {% endif %}
 
+        <!-- Player's Hand during Trump Selection -->
+        {% if game_state.get('hand') and game_state.get('phase') in ['trump_selection_round1', 'trump_selection_round2']
+        %}
+        <div class="scoreboard">
+            <h2>Your Hand</h2>
+            <div style="text-align: center; padding: 20px;">
+                {% for card in game_state.get('hand', []) %}
+                <div class="card {% if card[-1] in ['H', 'D', '♥', '♦'] %}red{% else %}black{% endif %}"
+                    style="cursor: default;">
+                    {{ card }}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
         <!-- Player's Hand -->
         {% if game_state.get('hand') and game_state.get('phase') == 'playing' %}
         <div class="scoreboard">
