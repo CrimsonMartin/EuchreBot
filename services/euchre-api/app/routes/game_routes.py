@@ -165,6 +165,17 @@ def load_game_from_redis(game_id: str) -> EuchreGame:
             card = Card.from_string(card_data["card"])
             game.state.current_trick.cards.append((card_data["position"], card))
 
+    # Restore tricks_played list
+    if state_dict["tricks_played"]:
+        from euchre_core.trick import Trick
+
+        for trick_data in state_dict["tricks_played"]:
+            trick = Trick(trick_data["lead_position"], game.state.trump)
+            for card_data in trick_data["cards"]:
+                card = Card.from_string(card_data["card"])
+                trick.cards.append((card_data["position"], card))
+            game.state.tricks_played.append(trick)
+
     return game
 
 
@@ -411,6 +422,41 @@ def get_valid_moves(game_id):
     }
 
     return jsonify(response)
+
+
+@game_bp.route("/games/<game_id>/new-hand", methods=["POST"])
+def start_new_hand(game_id):
+    """Start a new hand after hand_complete phase"""
+    # Load game from Redis
+    game = load_game_from_redis(game_id)
+    if not game:
+        return jsonify({"error": "Game not found"}), 404
+
+    # Check if we're in the right phase
+    if game.state.phase == GamePhase.GAME_OVER:
+        return jsonify({"error": "Game is over. Cannot start new hand."}), 400
+
+    if game.state.phase != GamePhase.HAND_COMPLETE:
+        return (
+            jsonify(
+                {"error": "Can only start new hand after current hand is complete"}
+            ),
+            400,
+        )
+
+    try:
+        # Start a new hand
+        game.start_new_hand()
+
+        # Process AI turns for trump selection
+        process_ai_turns(game)
+
+        # Save updated game state
+        save_game_to_redis(game)
+
+        return jsonify({"success": True, "state": game.get_state()})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
 
 
 @game_bp.route("/games/<game_id>", methods=["DELETE"])

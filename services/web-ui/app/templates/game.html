@@ -233,6 +233,95 @@
         </div>
         {% endif %}
 
+        <!-- Hand Complete Phase -->
+        {% if game_state.get('phase') == 'hand_complete' %}
+        <div class="scoreboard">
+            <h2>🎉 Hand Complete!</h2>
+            <div style="text-align: center; padding: 20px;">
+                <p style="font-size: 18px; margin: 20px 0;">
+                    <strong>Hand {{ game_state.get('hand_number', 0) }} Results:</strong>
+                </p>
+                <div style="margin: 20px 0;">
+                    <p><strong>Team 1 Tricks:</strong> {{ game_state.get('team1_tricks', 0) }}</p>
+                    <p><strong>Team 2 Tricks:</strong> {{ game_state.get('team2_tricks', 0) }}</p>
+                </div>
+                <div style="margin: 30px 0; padding: 20px; background-color: #f8f9fa; border-radius: 8px;">
+                    <h3 style="margin-top: 0;">Current Score</h3>
+                    <div style="display: flex; justify-content: space-around; margin: 20px 0;">
+                        <div>
+                            <h4>Team 1</h4>
+                            <div style="font-size: 36px; font-weight: bold; color: #2ecc71;">
+                                {{ game_state.get('score', {}).get('team1', 0) }}
+                            </div>
+                        </div>
+                        <div>
+                            <h4>Team 2</h4>
+                            <div style="font-size: 36px; font-weight: bold; color: #3498db;">
+                                {{ game_state.get('score', {}).get('team2', 0) }}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <form method="POST" action="{{ url_for('main.start_new_hand') }}">
+                    <button type="submit" class="btn btn-primary" style="font-size: 18px; padding: 15px 40px;">
+                        Start Next Hand
+                    </button>
+                </form>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Game Over Phase -->
+        {% if game_state.get('phase') == 'game_over' %}
+        <div class="scoreboard">
+            <h2>🏆 Game Over!</h2>
+            <div style="text-align: center; padding: 20px;">
+                {% set team1_score = game_state.get('score', {}).get('team1', 0) %}
+                {% set team2_score = game_state.get('score', {}).get('team2', 0) %}
+                {% if team1_score >= 10 %}
+                <p style="font-size: 24px; margin: 20px 0; color: #2ecc71;">
+                    <strong>🎊 Team 1 Wins! 🎊</strong>
+                </p>
+                {% elif team2_score >= 10 %}
+                <p style="font-size: 24px; margin: 20px 0; color: #3498db;">
+                    <strong>🎊 Team 2 Wins! 🎊</strong>
+                </p>
+                {% endif %}
+                <div style="margin: 30px 0; padding: 20px; background-color: #f8f9fa; border-radius: 8px;">
+                    <h3 style="margin-top: 0;">Final Score</h3>
+                    <div style="display: flex; justify-content: space-around; margin: 20px 0;">
+                        <div>
+                            <h4>Team 1</h4>
+                            <div style="font-size: 48px; font-weight: bold; color: #2ecc71;">
+                                {{ team1_score }}
+                            </div>
+                            <small>{{ game_state.get('players', ['','','',''])[0] }} & {{ game_state.get('players',
+                                ['','','',''])[2] }}</small>
+                        </div>
+                        <div>
+                            <h4>Team 2</h4>
+                            <div style="font-size: 48px; font-weight: bold; color: #3498db;">
+                                {{ team2_score }}
+                            </div>
+                            <small>{{ game_state.get('players', ['','','',''])[1] }} & {{ game_state.get('players',
+                                ['','','',''])[3] }}</small>
+                        </div>
+                    </div>
+                </div>
+                <div style="margin-top: 30px;">
+                    <a href="{{ url_for('main.new_game') }}" class="btn btn-primary"
+                        style="font-size: 18px; padding: 15px 40px; text-decoration: none; display: inline-block;">
+                        Play Again
+                    </a>
+                    <a href="{{ url_for('main.index') }}" class="btn btn-secondary"
+                        style="font-size: 18px; padding: 15px 40px; text-decoration: none; display: inline-block; margin-left: 10px;">
+                        Exit to Menu
+                    </a>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
         <!-- Player's Hand -->
         {% if game_state.get('hand') and game_state.get('phase') == 'playing' %}
         <div class="scoreboard">

@@ -193,6 +193,27 @@ def discard_card():
         return render_template("error.html", error=str(e))
 
 
+@main_bp.route("/game/new-hand", methods=["POST"])
+def start_new_hand():
+    """Start a new hand after the current hand is complete"""
+    game_id = session.get("game_id")
+    if not game_id:
+        return redirect(url_for("main.index"))
+
+    api_url = current_app.config["EUCHRE_API_URL"]
+
+    try:
+        response = requests.post(f"{api_url}/api/games/{game_id}/new-hand", timeout=5)
+
+        if response.status_code == 200:
+            return redirect(url_for("main.play_game"))
+        else:
+            error = response.json().get("error", "Failed to start new hand")
+            return render_template("error.html", error=error)
+    except Exception as e:
+        return render_template("error.html", error=str(e))
+
+
 @main_bp.route("/api/games/<game_id>/valid-moves", methods=["GET"])
 def get_valid_moves(game_id):
     """Proxy endpoint for getting valid moves from the euchre-api service"""
