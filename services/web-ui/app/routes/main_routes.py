@@ -99,32 +99,54 @@ def history():
 @main_bp.route("/training", methods=["GET", "POST"])
 def training():
     """AI training dashboard"""
+    training_run_id = None
+
     if request.method == "POST":
         population_size = request.form.get("population_size", 20, type=int)
         generations = request.form.get("generations", 10, type=int)
 
         # Call the AI trainer API to start training
-        api_url = current_app.config.get("AI_TRAINER_URL", "http://ai-trainer:5002")
+        api_url = current_app.config.get("AI_TRAINER_URL", "http://ai-trainer:5003")
+
+        current_app.logger.info(f"=== TRAINING REQUEST ===")
+        current_app.logger.info(f"API URL: {api_url}")
+        current_app.logger.info(f"Population Size: {population_size}")
+        current_app.logger.info(f"Generations: {generations}")
+
         try:
+            full_url = f"{api_url}/api/train/start"
+            payload = {"population_size": population_size, "generations": generations}
+
+            current_app.logger.info(f"Sending POST to: {full_url}")
+            current_app.logger.info(f"Payload: {payload}")
+
             response = requests.post(
-                f"{api_url}/api/train/start",
-                json={"population_size": population_size, "generations": generations},
+                full_url,
+                json=payload,
                 timeout=10,
             )
 
+            current_app.logger.info(f"Response Status: {response.status_code}")
+            current_app.logger.info(f"Response Body: {response.text}")
+
             if response.status_code == 200:
-                # Training started successfully
-                pass
+                current_app.logger.info("Training started successfully!")
+                data = response.json()
+                training_run_id = data.get("training_run_id")
             else:
-                # Handle error
-                pass
+                current_app.logger.error(
+                    f"Training failed with status {response.status_code}"
+                )
+        except requests.exceptions.ConnectionError as e:
+            current_app.logger.error(f"Connection error to AI trainer: {e}")
+            current_app.logger.error(f"Could not connect to {api_url}")
+        except requests.exceptions.Timeout as e:
+            current_app.logger.error(f"Timeout connecting to AI trainer: {e}")
         except Exception as e:
-            # Handle connection error
-            print(f"Error starting training: {e}")
+            current_app.logger.error(f"Unexpected error starting training: {e}")
+            current_app.logger.exception("Full traceback:")
 
-        return redirect(url_for("main.training"))
-
-    return render_template("training.html")
+    return render_template("training.html", training_run_id=training_run_id)
 
 
 @main_bp.route("/game/move", methods=["POST"])
@@ -248,5 +270,26 @@ def get_valid_moves(game_id):
             return jsonify(response.json())
         else:
             return jsonify({"error": "Failed to get valid moves"}), response.status_code
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@main_bp.route("/api/train/status/<run_id>", methods=["GET"])
+def get_training_status(run_id):
+    """Proxy endpoint for getting training status from ai-trainer service"""
+    from flask import jsonify
+
+    api_url = current_app.config.get("AI_TRAINER_URL", "http://ai-trainer:5003")
+
+    try:
+        response = requests.get(
+            f"{api_url}/api/train/status/{run_id}",
+            timeout=5,
+        )
+
+        if response.status_code == 200:
+            return jsonify(response.json())
+        else:
+            return jsonify({"error": "Training run not found"}), response.status_code
     except Exception as e:
         return jsonify({"error": str(e)}), 500

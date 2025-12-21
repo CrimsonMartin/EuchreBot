@@ -6,6 +6,95 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>EuchreBot - AI Training</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        .progress-bar {
+            width: 100%;
+            height: 30px;
+            background-color: #2a2a2a;
+            border-radius: 5px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4CAF50, #45a049);
+            transition: width 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 5px 15px;
+            border-radius: 15px;
+            font-size: 14px;
+            font-weight: bold;
+        }
+
+        .status-running {
+            background-color: #2196F3;
+            color: white;
+        }
+
+        .status-completed {
+            background-color: #4CAF50;
+            color: white;
+        }
+
+        .status-failed {
+            background-color: #f44336;
+            color: white;
+        }
+
+        .metric {
+            display: inline-block;
+            margin: 10px 20px;
+            padding: 10px;
+            background-color: var(--bg-color);
+            border-radius: 5px;
+        }
+
+        .metric-label {
+            font-size: 12px;
+            color: #999;
+        }
+
+        .metric-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: var(--primary-color);
+        }
+
+        #trainingLog {
+            background-color: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 5px;
+            padding: 15px;
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            line-height: 1.5;
+        }
+
+        .log-entry {
+            margin: 2px 0;
+            color: #ccc;
+        }
+
+        .log-generation {
+            color: #4CAF50;
+            font-weight: bold;
+        }
+
+        .log-model {
+            color: #2196F3;
+        }
+    </style>
 </head>
 
 <body>
@@ -35,40 +124,127 @@
         </div>
 
         <!-- Training Status -->
-        <div class="scoreboard">
+        <div class="scoreboard" id="trainingStatus" {% if not training_run_id %}style="display: none;" {% endif %}>
             <h2>Current Training Status</h2>
-            <div style="padding: 20px; text-align: center;">
-                <p style="color: #999;">No training in progress</p>
-            </div>
-        </div>
+            <div style="padding: 20px;">
+                <div style="margin-bottom: 20px;">
+                    <span class="status-badge" id="statusBadge">Running</span>
+                    <span style="margin-left: 20px; color: #999;">Run ID: <span id="runId">{{ training_run_id or 'N/A'
+                            }}</span></span>
+                </div>
 
-        <!-- Trained Models -->
-        <div class="scoreboard">
-            <h2>Trained Models</h2>
-            <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
-                <thead>
-                    <tr style="background-color: var(--bg-color);">
-                        <th style="padding: 10px; text-align: left;">Model ID</th>
-                        <th style="padding: 10px; text-align: left;">Name</th>
-                        <th style="padding: 10px; text-align: left;">Architecture</th>
-                        <th style="padding: 10px; text-align: left;">Generation</th>
-                        <th style="padding: 10px; text-align: left;">Fitness</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td colspan="5" style="padding: 20px; text-align: center; color: #999;">
-                            No models trained yet. Start a training run to create AI models.
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill" style="width: 0%;">
+                        <span id="progressText">0%</span>
+                    </div>
+                </div>
+
+                <div style="text-align: center; margin: 20px 0;">
+                    <div class="metric">
+                        <div class="metric-label">Generation</div>
+                        <div class="metric-value" id="currentGen">0</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Best Fitness</div>
+                        <div class="metric-value" id="bestFitness">0.00</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Avg Fitness</div>
+                        <div class="metric-value" id="avgFitness">0.00</div>
+                    </div>
+                </div>
+
+                <h3>Training Log</h3>
+                <div id="trainingLog">
+                    <div class="log-entry">Waiting for training to start...</div>
+                </div>
+            </div>
         </div>
 
         <div class="menu">
             <a href="{{ url_for('main.index') }}" class="btn btn-secondary">Back to Home</a>
         </div>
     </div>
+
+    {% if training_run_id %}
+    <script>
+        var TRAINING_RUN_ID = "{{ training_run_id }}";
+    </script>
+    {% endif %}
+    <script>
+        let trainingRunId = typeof TRAINING_RUN_ID !== 'undefined' ? TRAINING_RUN_ID : null;
+        let pollInterval = null;
+        let lastGeneration = -1;
+
+        function updateTrainingStatus() {
+            if (!trainingRunId) return;
+
+            fetch(`/api/train/status/${trainingRunId}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        console.error('Error fetching status:', data.error);
+                        return;
+                    }
+
+                    // Update status badge
+                    const statusBadge = document.getElementById('statusBadge');
+                    statusBadge.textContent = data.status.charAt(0).toUpperCase() + data.status.slice(1);
+                    statusBadge.className = 'status-badge status-' + data.status;
+
+                    // Update metrics
+                    const currentGen = data.current_generation || 0;
+                    const totalGen = data.generations || 10;
+                    const bestFitness = data.best_fitness || 0;
+                    const avgFitness = data.avg_fitness || 0;
+
+                    document.getElementById('currentGen').textContent = `${currentGen}/${totalGen}`;
+                    document.getElementById('bestFitness').textContent = bestFitness.toFixed(2);
+                    document.getElementById('avgFitness').textContent = avgFitness.toFixed(2);
+
+                    // Update progress bar
+                    const progress = (currentGen / totalGen) * 100;
+                    document.getElementById('progressFill').style.width = progress + '%';
+                    document.getElementById('progressText').textContent = Math.round(progress) + '%';
+
+                    // Add log entry for new generation
+                    if (currentGen > lastGeneration) {
+                        addLogEntry(`Generation ${currentGen}: Best = ${bestFitness.toFixed(3)}, Avg = ${avgFitness.toFixed(3)}`, 'log-generation');
+                        lastGeneration = currentGen;
+                    }
+
+                    // Stop polling if completed or failed
+                    if (data.status === 'completed' || data.status === 'failed') {
+                        clearInterval(pollInterval);
+                        if (data.status === 'completed') {
+                            addLogEntry('Training completed successfully!', 'log-generation');
+                        } else {
+                            addLogEntry('Training failed: ' + (data.error || 'Unknown error'), 'log-entry');
+                        }
+                    }
+                })
+                .catch(error => {
+                    console.error('Error polling training status:', error);
+                });
+        }
+
+        function addLogEntry(message, className = 'log-entry') {
+            const logDiv = document.getElementById('trainingLog');
+            const entry = document.createElement('div');
+            entry.className = className;
+            entry.textContent = message;
+            logDiv.appendChild(entry);
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        // Start polling if we have a training run ID
+        if (trainingRunId) {
+            document.getElementById('trainingStatus').style.display = 'block';
+            addLogEntry('Training started...', 'log-generation');
+            updateTrainingStatus();
+            pollInterval = setInterval(updateTrainingStatus, 1000); // Poll every second
+        }
+    </script>
 </body>
 
 </html>
