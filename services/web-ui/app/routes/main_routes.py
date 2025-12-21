@@ -103,24 +103,21 @@ def training():
 
     if request.method == "POST":
         population_size = request.form.get("population_size", 20, type=int)
-        generations = request.form.get("generations", 10, type=int)
-        use_seeding = request.form.get("use_seeding") == "true"
 
         # Call the AI trainer API to start training
         api_url = current_app.config.get("AI_TRAINER_URL", "http://ai-trainer:5003")
 
-        current_app.logger.info(f"=== TRAINING REQUEST ===")
+        current_app.logger.info(f"=== CONTINUOUS TRAINING REQUEST ===")
         current_app.logger.info(f"API URL: {api_url}")
         current_app.logger.info(f"Population Size: {population_size}")
-        current_app.logger.info(f"Generations: {generations}")
-        current_app.logger.info(f"Use Seeding: {use_seeding}")
+        current_app.logger.info(f"Mode: Continuous (infinite)")
+        current_app.logger.info(f"Seeding: Always enabled (25%)")
 
         try:
             full_url = f"{api_url}/api/train/start"
             payload = {
                 "population_size": population_size,
-                "generations": generations,
-                "use_seeding": use_seeding,
+                "continuous": True,  # Always continuous
             }
 
             current_app.logger.info(f"Sending POST to: {full_url}")

@@ -137,3 +137,7 @@ class ELORatingSystem:
     def reset_ratings(self):
         """Reset all ratings to initial value."""
         self.ratings.clear()
+
+    def get_rating_description(self, elo: float) -> str:
+        """Get a textual description of the rating."""
+        return f"Rating: {elo:.2f}"

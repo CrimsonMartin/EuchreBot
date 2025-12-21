@@ -107,30 +107,19 @@
             <form method="POST" action="{{ url_for('main.training') }}" style="padding: 20px;">
                 <div style="margin: 15px 0;">
                     <label for="population_size" style="display: inline-block; width: 200px;">Population Size:</label>
-                    <input type="number" id="population_size" name="population_size" value="20" min="5" max="100"
-                        style="padding: 8px; border-radius: 5px; border: 1px solid #ccc; width: 150px;">
-                </div>
-                <div style="margin: 15px 0;">
-                    <label for="generations" style="display: inline-block; width: 200px;">Generations:</label>
-                    <input type="number" id="generations" name="generations" value="10" min="1" max="100"
-                        style="padding: 8px; border-radius: 5px; border: 1px solid #ccc; width: 150px;">
-                </div>
-                <div style="margin: 15px 0;">
-                    <label for="use_seeding" style="display: inline-block; width: 200px;">
-                        <input type="checkbox" id="use_seeding" name="use_seeding" value="true"
-                            style="margin-right: 8px;">
-                        Seed from Best Models (25%)
-                    </label>
-                    <div style="margin-left: 208px; font-size: 12px; color: #999;">
-                        Use top models from previous runs as starting point
+                    <input type="number" id="population_size" name="population_size" value="20" min="4" max="100"
+                        step="4" style="padding: 8px; border-radius: 5px; border: 1px solid #ccc; width: 150px;">
+                    <div style="margin-left: 208px; font-size: 12px; color: #999; margin-top: 5px;">
+                        Training runs continuously until cancelled. Best models auto-saved every 10 generations.
                     </div>
                 </div>
                 <div style="margin: 20px 0;">
                     <button type="submit" class="btn btn-primary" style="border: none; cursor: pointer;">
-                        Start Training
+                        🚀 Start Continuous Training
                     </button>
                 </div>
             </form>
+
         </div>
 
         <!-- Training Status -->
@@ -162,6 +151,13 @@
                         <div class="metric-label">Avg Fitness</div>
                         <div class="metric-value" id="avgFitness">0.00</div>
                     </div>
+                </div>
+
+                <div style="text-align: center; margin: 20px 0;">
+                    <button id="cancelBtn" class="btn"
+                        style="background-color: #f44336; color: white; border: none; cursor: pointer; padding: 10px 30px; border-radius: 5px; font-size: 16px;">
+                        ⏹️ Cancel Training
+                    </button>
                 </div>
 
                 <h3>Training Log</h3>
@@ -247,12 +243,40 @@
             logDiv.scrollTop = logDiv.scrollHeight;
         }
 
+        function cancelTraining() {
+            if (!trainingRunId) return;
+
+            if (confirm('Are you sure you want to cancel this training run?')) {
+                fetch(`/api/train/cancel/${trainingRunId}`, {
+                    method: 'POST'
+                })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.status === 'cancelling') {
+                            addLogEntry('Cancelling training... Please wait for current generation to complete.', 'log-entry');
+                            document.getElementById('cancelBtn').disabled = true;
+                            document.getElementById('cancelBtn').textContent = '⏳ Cancelling...';
+                            document.getElementById('cancelBtn').style.backgroundColor = '#999';
+                        } else {
+                            addLogEntry('Error cancelling training: ' + (data.error || 'Unknown error'), 'log-entry');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error cancelling training:', error);
+                        addLogEntry('Error cancelling training: ' + error.message, 'log-entry');
+                    });
+            }
+        }
+
         // Start polling if we have a training run ID
         if (trainingRunId) {
             document.getElementById('trainingStatus').style.display = 'block';
             addLogEntry('Training started...', 'log-generation');
             updateTrainingStatus();
             pollInterval = setInterval(updateTrainingStatus, 1000); // Poll every second
+
+            // Attach cancel button handler
+            document.getElementById('cancelBtn').addEventListener('click', cancelTraining);
         }
     </script>
 </body>
