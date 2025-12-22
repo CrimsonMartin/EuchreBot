@@ -38,7 +38,9 @@ def get_db_connection():
     return psycopg2.connect(app.config["DATABASE_URL"])
 
 
-def run_continuous_training(run_id: str, population_size: int):
+def run_continuous_training(
+    run_id: str, population_size: int, games_per_pairing: int = 50
+):
     """Run continuous training until cancelled"""
     try:
         with training_lock:
@@ -82,13 +84,13 @@ def run_continuous_training(run_id: str, population_size: int):
             population_size, seed_percentage=0.25
         )
 
-        # Initialize genetic algorithm
+        # Initialize genetic algorithm with enhanced parameters
         ga = GeneticAlgorithm(
             population_size=population_size,
-            mutation_rate=0.1,
+            mutation_rate=0.15,
             crossover_rate=0.7,
-            elite_size=3,
-            games_per_pairing=10,
+            elite_size=4,
+            games_per_pairing=games_per_pairing,
         )
 
         # Initialize population
@@ -276,7 +278,8 @@ def health():
 def start_training():
     """Start a new continuous training run"""
     data = request.json
-    population_size = data.get("population_size", 20)
+    population_size = data.get("population_size", 40)
+    games_per_pairing = data.get("games_per_pairing", 50)
 
     # Create training run ID
     run_id = str(uuid.uuid4())
@@ -296,7 +299,8 @@ def start_training():
 
     # Start training in background thread
     thread = threading.Thread(
-        target=run_continuous_training, args=(run_id, population_size)
+        target=run_continuous_training,
+        args=(run_id, population_size, games_per_pairing),
     )
     thread.daemon = True
     thread.start()
@@ -306,6 +310,7 @@ def start_training():
             "status": "started",
             "training_run_id": run_id,
             "population_size": population_size,
+            "games_per_pairing": games_per_pairing,
             "continuous": True,
         }
     )

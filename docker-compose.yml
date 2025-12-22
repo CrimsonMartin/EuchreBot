@@ -1,4 +1,7 @@
 services:
+
+  # startup services in order from top to bottom
+
   postgres:
     image: postgres:16-alpine
     container_name: euchre-postgres
@@ -17,6 +20,20 @@ services:
       timeout: 5s
       retries: 5
 
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: euchre-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@euchrebot.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_LISTEN_PORT: 5050
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    ports:
+      - "127.0.0.1:5050:5050"
+    depends_on:
+      - postgres
+
   redis:
     image: redis:7-alpine
     container_name: euchre-redis
@@ -30,6 +47,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
 
   euchre-api:
     build:
@@ -50,6 +68,19 @@ services:
         condition: service_healthy
     command: flask run --host=0.0.0.0 --port=5000
 
+  cli:
+    build:
+      context: .
+      dockerfile: ./services/cli/Dockerfile
+    container_name: euchre-cli
+    environment:
+      EUCHRE_API_URL: http://euchre-api:5000
+    depends_on:
+      - euchre-api
+    stdin_open: true
+    tty: true
+    command: python app/main.py
+
   web-ui:
     build:
       context: .
@@ -68,19 +99,6 @@ services:
       - euchre-api
       - redis
     command: flask run --host=0.0.0.0 --port=5001
-
-  cli:
-    build:
-      context: .
-      dockerfile: ./services/cli/Dockerfile
-    container_name: euchre-cli
-    environment:
-      EUCHRE_API_URL: http://euchre-api:5000
-    depends_on:
-      - euchre-api
-    stdin_open: true
-    tty: true
-    command: python app/main.py
 
   ai-trainer:
     build:
@@ -107,19 +125,7 @@ services:
               capabilities: [gpu]
     command: python -m flask run --host=0.0.0.0 --port=5003
 
-  pgadmin:
-    image: dpage/pgadmin4:latest
-    container_name: euchre-pgadmin
-    environment:
-      PGADMIN_DEFAULT_EMAIL: admin@euchrebot.com
-      PGADMIN_DEFAULT_PASSWORD: admin
-      PGADMIN_LISTEN_PORT: 5050
-    volumes:
-      - pgadmin_data:/var/lib/pgadmin
-    ports:
-      - "127.0.0.1:5050:5050"
-    depends_on:
-      - postgres
+
 
 volumes:
   postgres_data:

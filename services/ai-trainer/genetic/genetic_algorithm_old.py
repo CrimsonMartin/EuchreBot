@@ -2,7 +2,6 @@
 Genetic Algorithm for Evolving Euchre Neural Networks
 Round-Robin Tournament System with Team-Based Evaluation
 ELO Rating System with Parallel Processing
-ENHANCED: Neural network-based trump selection and dealer discard
 """
 
 import random
@@ -115,7 +114,6 @@ class GeneticAlgorithm:
 
         print(f"Initialized population of {len(self.population)} models")
         print(f"Using {self.num_workers} parallel workers")
-        print(f"Games per pairing: {self.games_per_pairing}")
         print(f"CUDA available: {torch.cuda.is_available()}")
 
     def play_game_with_teams(
@@ -124,7 +122,7 @@ class GeneticAlgorithm:
         team2_models: Tuple[BasicEuchreNN, BasicEuchreNN],
     ) -> Tuple[int, int, int]:
         """
-        Play a single game with specified teams using neural networks for all decisions.
+        Play a single game with specified teams.
 
         Args:
             team1_models: Tuple of (model_pos0, model_pos2) for team 1
@@ -153,155 +151,39 @@ class GeneticAlgorithm:
 
             # Handle different game phases
             if game.state.phase == GamePhase.TRUMP_SELECTION_ROUND1:
-                # Use neural network for trump selection
-                game_state_dict = game.get_state(perspective_position=current_pos)
-                turned_up_card = (
-                    str(game.state.turned_up_card)
-                    if game.state.turned_up_card
-                    else None
-                )
-                trump_state = encode_trump_state(game_state_dict, turned_up_card)
-
-                decision_idx = current_model.predict_trump_decision(trump_state)
-
-                # decision_idx: 0-3 = call suits (C,D,H,S), 4 = pass
-                if decision_idx == 4:
-                    # Try to pass
-                    try:
-                        game.pass_trump()
-                    except:
-                        # Dealer must call - use turned up suit
-                        if game.state.turned_up_card:
-                            game.call_trump(game.state.turned_up_card.suit)
-                else:
-                    # Call the selected suit
-                    suit_map = [Suit.CLUBS, Suit.DIAMONDS, Suit.HEARTS, Suit.SPADES]
-                    selected_suit = suit_map[decision_idx]
-
-                    # Check if this is the turned up suit (valid in round 1)
-                    if (
-                        game.state.turned_up_card
-                        and selected_suit == game.state.turned_up_card.suit
-                    ):
-                        game.call_trump(selected_suit)
-                    else:
-                        # Can't call different suit in round 1, so pass
-                        try:
-                            game.pass_trump()
-                        except:
-                            # Dealer must call
-                            if game.state.turned_up_card:
-                                game.call_trump(game.state.turned_up_card.suit)
+                # Simple strategy: pass for now (can be improved)
+                try:
+                    game.pass_trump()
+                except:
+                    # Dealer must call
+                    if game.state.turned_up_card:
+                        game.call_trump(game.state.turned_up_card.suit)
 
             elif game.state.phase == GamePhase.TRUMP_SELECTION_ROUND2:
-                # Use neural network for trump selection (round 2)
-                game_state_dict = game.get_state(perspective_position=current_pos)
-                turned_up_card = (
-                    str(game.state.turned_up_card)
-                    if game.state.turned_up_card
-                    else None
-                )
-                trump_state = encode_trump_state(game_state_dict, turned_up_card)
-
-                decision_idx = current_model.predict_trump_decision(trump_state)
-
+                # Simple strategy: call a random suit (not turned up)
                 turned_up_suit = (
                     game.state.turned_up_card.suit
                     if game.state.turned_up_card
                     else Suit.CLUBS
                 )
-
-                if decision_idx == 4:
-                    # Try to pass
-                    if game.state.current_player_position == game.state.dealer_position:
-                        # Dealer must call - pick a suit that's not turned up
-                        available_suits = [
-                            s
-                            for s in [
-                                Suit.CLUBS,
-                                Suit.DIAMONDS,
-                                Suit.HEARTS,
-                                Suit.SPADES,
-                            ]
-                            if s != turned_up_suit
-                        ]
-                        game.call_trump(random.choice(available_suits))
-                    else:
-                        try:
-                            game.pass_trump()
-                        except:
-                            # Shouldn't happen but handle it
-                            available_suits = [
-                                s
-                                for s in [
-                                    Suit.CLUBS,
-                                    Suit.DIAMONDS,
-                                    Suit.HEARTS,
-                                    Suit.SPADES,
-                                ]
-                                if s != turned_up_suit
-                            ]
-                            game.call_trump(random.choice(available_suits))
+                available_suits = [
+                    s
+                    for s in [Suit.CLUBS, Suit.DIAMONDS, Suit.HEARTS, Suit.SPADES]
+                    if s != turned_up_suit
+                ]
+                if game.state.current_player_position == game.state.dealer_position:
+                    # Dealer must call
+                    game.call_trump(random.choice(available_suits))
                 else:
-                    # Call the selected suit (must not be turned up suit)
-                    suit_map = [Suit.CLUBS, Suit.DIAMONDS, Suit.HEARTS, Suit.SPADES]
-                    selected_suit = suit_map[decision_idx]
-
-                    if selected_suit != turned_up_suit:
-                        game.call_trump(selected_suit)
-                    else:
-                        # Invalid choice, pick different suit
-                        available_suits = [
-                            s
-                            for s in [
-                                Suit.CLUBS,
-                                Suit.DIAMONDS,
-                                Suit.HEARTS,
-                                Suit.SPADES,
-                            ]
-                            if s != turned_up_suit
-                        ]
-                        if (
-                            game.state.current_player_position
-                            == game.state.dealer_position
-                        ):
-                            game.call_trump(random.choice(available_suits))
-                        else:
-                            try:
-                                game.pass_trump()
-                            except:
-                                game.call_trump(random.choice(available_suits))
+                    try:
+                        game.pass_trump()
+                    except:
+                        game.call_trump(random.choice(available_suits))
 
             elif game.state.phase == GamePhase.DEALER_DISCARD:
-                # Use neural network for dealer discard
+                # Dealer discards lowest card
                 dealer = game.state.get_player(game.state.dealer_position)
-                game_state_dict = game.get_state(
-                    perspective_position=game.state.dealer_position
-                )
-
-                # Hand includes the picked up card
-                hand_with_pickup = [str(card) for card in dealer.hand]
-                discard_state = encode_discard_state(game_state_dict, hand_with_pickup)
-
-                card_idx = current_model.predict_discard(discard_state)
-
-                # Map to actual card
-                if card_idx < len(self.all_cards):
-                    predicted_card_str = self.all_cards[card_idx]
-
-                    # Find card in hand
-                    card_to_discard = None
-                    for card in dealer.hand:
-                        if str(card) == predicted_card_str:
-                            card_to_discard = card
-                            break
-
-                    # If not found, discard first card
-                    if card_to_discard is None:
-                        card_to_discard = dealer.hand[0]
-                else:
-                    card_to_discard = dealer.hand[0]
-
+                card_to_discard = dealer.hand[0]  # Simple: discard first card
                 game.dealer_discard(card_to_discard)
 
             elif game.state.phase == GamePhase.PLAYING:
@@ -460,13 +342,11 @@ class GeneticAlgorithm:
             group_indices = remaining_indices + fill_indices
             groups.append((group_models, group_indices))
 
-        print(f"Running {len(groups)} tournament groups...")
+        print(f"Running {len(groups)} tournament groups in parallel...")
 
         # Run tournaments for each group
         for group_idx, (group_models, group_indices) in enumerate(groups):
-            print(
-                f"  Group {group_idx + 1}/{len(groups)}: {self.games_per_pairing * 3} games per model"
-            )
+            print(f"Tournament Group {group_idx + 1}/{len(groups)}")
             self.run_round_robin_tournament_elo(group_models, group_indices)
 
         # Get final ELO ratings
@@ -512,7 +392,7 @@ class GeneticAlgorithm:
         return child
 
     def mutate(self, model: BasicEuchreNN):
-        """Mutate model weights with adaptive mutation rate"""
+        """Mutate model weights"""
         for param in model.parameters():
             if random.random() < self.mutation_rate:
                 # Add Gaussian noise to weights
@@ -557,30 +437,15 @@ class GeneticAlgorithm:
             avg_elo = sum(self.elo_ratings) / len(self.elo_ratings)
 
             # Update global champion if current best is better
-            prev_best_elo = self.global_best_elo
             if current_best_elo > self.global_best_elo:
                 self.global_best_model = copy.deepcopy(current_best_model)
                 self.global_best_elo = current_best_elo
-                self.generations_without_improvement = 0
                 print(f"\n🏆 NEW GLOBAL CHAMPION! ELO: {current_best_elo:.0f}")
-            else:
-                self.generations_without_improvement += 1
-
-            # Adaptive mutation: increase if stagnating
-            if self.generations_without_improvement >= self.stagnation_threshold:
-                self.mutation_rate = min(self.base_mutation_rate * 1.5, 0.3)
-                print(
-                    f"  ⚠️  Stagnation detected! Increasing mutation rate to {self.mutation_rate:.3f}"
-                )
-            else:
-                self.mutation_rate = self.base_mutation_rate
 
             print(f"\nGeneration {generation + 1} Summary:")
             print(f"  Current Best ELO:  {current_best_elo:.0f}")
             print(f"  Global Best ELO:   {self.global_best_elo:.0f}")
             print(f"  Average ELO:       {avg_elo:.0f}")
-            print(f"  Mutation Rate:     {self.mutation_rate:.3f}")
-            print(f"  Gens w/o Improve:  {self.generations_without_improvement}")
 
             # Call callback if provided (use global best for tracking)
             if callback:
