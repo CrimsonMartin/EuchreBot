@@ -110,6 +110,17 @@ services:
       DATABASE_URL: postgresql://euchre:euchre_dev_pass@postgres:5432/euchrebot
       EUCHRE_API_URL: http://euchre-api:5000
       CUDA_VISIBLE_DEVICES: "0"
+      # Parallel processing configuration
+      # NUM_WORKERS: Number of parallel workers (default: CPU count - 1)
+      # Set higher for more parallelism, lower if you want to limit CPU usage
+      NUM_WORKERS: "6"
+      # PARALLEL_MODE: "thread" (recommended), "process", or "sequential"
+      # - thread: Uses ThreadPoolExecutor (best for PyTorch with GPU)
+      # - process: Uses ProcessPoolExecutor (better for CPU-only, more isolation)
+      # - sequential: No parallelism (for debugging)
+      PARALLEL_MODE: "thread"
+      # USE_CUDA: Enable GPU acceleration (true/false)
+      USE_CUDA: "true"
     volumes:
       - ai_models:/models
     expose:

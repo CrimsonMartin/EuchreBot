@@ -11,7 +11,7 @@ import copy
 import sys
 import os
 from typing import List, Tuple, Dict
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 import multiprocessing
 
 # Add parent directory to path to import euchre_core
@@ -29,25 +29,38 @@ from networks.basic_nn import (
 from elo_system import ELORatingSystem
 
 
+# Global flag for GPU usage in workers
+USE_GPU_IN_WORKERS = os.getenv("USE_GPU_IN_WORKERS", "false").lower() == "true"
+
+
 # Helper function for parallel processing (must be at module level)
 def run_tournament_group_worker(args):
     """Worker function to run a tournament group in parallel"""
-    models_state_dicts, games_per_pairing, all_cards = args
+    models_state_dicts, games_per_pairing, all_cards, group_indices, use_gpu = args
 
     # Reconstruct models from state dicts
+    # Use GPU if available and enabled, otherwise CPU
+    use_cuda = use_gpu and torch.cuda.is_available()
     models = []
     for state_dict in models_state_dicts:
-        model = BasicEuchreNN(use_cuda=False)  # Use CPU in workers
+        model = BasicEuchreNN(use_cuda=use_cuda)
         model.load_state_dict(state_dict)
         model.eval()
         models.append(model)
 
     # Run tournament
-    ga_temp = GeneticAlgorithm(games_per_pairing=games_per_pairing)
+    ga_temp = GeneticAlgorithm(games_per_pairing=games_per_pairing, use_cuda=use_cuda)
     ga_temp.all_cards = all_cards
-    results = ga_temp.run_round_robin_tournament_elo(models)
 
-    return results
+    # Initialize ELO system for this group
+    for idx in group_indices:
+        ga_temp.elo_system.ratings[idx] = ga_temp.elo_system.initial_rating
+
+    # Run round-robin tournament
+    ga_temp.run_round_robin_tournament_elo(models, group_indices)
+
+    # Return the ELO ratings for this group
+    return {idx: ga_temp.elo_system.get_rating(idx) for idx in group_indices}
 
 
 class GeneticAlgorithm:
@@ -62,6 +75,8 @@ class GeneticAlgorithm:
         games_per_pairing=50,
         num_workers=None,
         use_elo=True,
+        use_cuda=None,
+        parallel_mode="thread",  # "thread", "process", or "sequential"
     ):
         self.population_size = population_size
         self.mutation_rate = mutation_rate
@@ -71,8 +86,15 @@ class GeneticAlgorithm:
         self.games_per_pairing = games_per_pairing
         self.num_workers = num_workers or max(1, multiprocessing.cpu_count() - 1)
         self.use_elo = use_elo
+        self.parallel_mode = parallel_mode
         self.population: List[BasicEuchreNN] = []
         self.elo_ratings: List[float] = []
+
+        # GPU/CUDA settings
+        if use_cuda is None:
+            self.use_cuda = torch.cuda.is_available()
+        else:
+            self.use_cuda = use_cuda and torch.cuda.is_available()
 
         # ELO rating system
         self.elo_system = ELORatingSystem(initial_rating=1500, k_factor=32)
@@ -426,6 +448,9 @@ class GeneticAlgorithm:
         """
         Evaluate entire population using parallel tournament groups.
 
+        Uses ThreadPoolExecutor for parallel execution (better for I/O bound and
+        avoids multiprocessing overhead with PyTorch models).
+
         Returns:
             List of ELO ratings for each model
         """
@@ -460,14 +485,25 @@ class GeneticAlgorithm:
             group_indices = remaining_indices + fill_indices
             groups.append((group_models, group_indices))
 
-        print(f"Running {len(groups)} tournament groups...")
+        print(
+            f"Running {len(groups)} tournament groups with {self.num_workers} workers..."
+        )
+        print(f"Parallel mode: {self.parallel_mode}, CUDA enabled: {self.use_cuda}")
 
-        # Run tournaments for each group
-        for group_idx, (group_models, group_indices) in enumerate(groups):
-            print(
-                f"  Group {group_idx + 1}/{len(groups)}: {self.games_per_pairing * 3} games per model"
-            )
-            self.run_round_robin_tournament_elo(group_models, group_indices)
+        if self.parallel_mode == "sequential" or self.num_workers <= 1:
+            # Sequential execution (original behavior)
+            for group_idx, (group_models, group_indices) in enumerate(groups):
+                print(
+                    f"  Group {group_idx + 1}/{len(groups)}: {self.games_per_pairing * 3} games per model"
+                )
+                self.run_round_robin_tournament_elo(group_models, group_indices)
+        elif self.parallel_mode == "thread":
+            # Thread-based parallelism (recommended for PyTorch)
+            # This avoids the overhead of serializing models for multiprocessing
+            self._run_groups_threaded(groups)
+        else:
+            # Process-based parallelism (for CPU-bound without GPU)
+            self._run_groups_multiprocess(groups)
 
         # Get final ELO ratings
         elo_ratings = [
@@ -475,6 +511,102 @@ class GeneticAlgorithm:
         ]
 
         return elo_ratings
+
+    def _run_groups_threaded(self, groups: List[Tuple[List[BasicEuchreNN], List[int]]]):
+        """Run tournament groups using thread pool for parallelism."""
+        import threading
+
+        # Create a lock for thread-safe ELO updates
+        elo_lock = threading.Lock()
+        completed = [0]  # Use list to allow modification in nested function
+
+        def run_group(group_data):
+            group_models, group_indices = group_data
+            # Create a temporary GA instance for this group
+            ga_temp = GeneticAlgorithm(
+                games_per_pairing=self.games_per_pairing,
+                use_cuda=self.use_cuda,
+                parallel_mode="sequential",
+            )
+            ga_temp.all_cards = self.all_cards
+
+            # Initialize ELO system for this group
+            for idx in group_indices:
+                ga_temp.elo_system.ratings[idx] = ga_temp.elo_system.initial_rating
+
+            # Run round-robin tournament
+            ga_temp.run_round_robin_tournament_elo(group_models, group_indices)
+
+            # Collect results
+            results = {idx: ga_temp.elo_system.get_rating(idx) for idx in group_indices}
+
+            # Update main ELO system (thread-safe)
+            with elo_lock:
+                for idx, rating in results.items():
+                    # Merge ratings - take the delta from initial and apply to main system
+                    delta = rating - ga_temp.elo_system.initial_rating
+                    current = self.elo_system.get_rating(idx)
+                    self.elo_system.ratings[idx] = current + delta
+
+                completed[0] += 1
+                print(f"  Completed group {completed[0]}/{len(groups)}")
+
+            return results
+
+        # Run groups in parallel using ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=self.num_workers) as executor:
+            futures = [executor.submit(run_group, group) for group in groups]
+
+            # Wait for all to complete
+            for future in as_completed(futures):
+                try:
+                    future.result()
+                except Exception as e:
+                    print(f"  Error in tournament group: {e}")
+
+    def _run_groups_multiprocess(
+        self, groups: List[Tuple[List[BasicEuchreNN], List[int]]]
+    ):
+        """Run tournament groups using process pool for parallelism."""
+        # Prepare arguments for worker processes
+        # We need to serialize model state dicts since PyTorch models can't be pickled directly
+        worker_args = []
+        for group_models, group_indices in groups:
+            state_dicts = [model.state_dict() for model in group_models]
+            worker_args.append(
+                (
+                    state_dicts,
+                    self.games_per_pairing,
+                    self.all_cards,
+                    group_indices,
+                    self.use_cuda,
+                )
+            )
+
+        # Run in parallel using ProcessPoolExecutor
+        completed = 0
+        with ProcessPoolExecutor(max_workers=self.num_workers) as executor:
+            futures = [
+                executor.submit(run_tournament_group_worker, args)
+                for args in worker_args
+            ]
+
+            for future in as_completed(futures):
+                try:
+                    results = future.result()
+                    # Update main ELO system with results
+                    for idx, rating in results.items():
+                        delta = rating - self.elo_system.initial_rating
+                        current = self.elo_system.get_rating(idx)
+                        self.elo_system.ratings[idx] = current + delta
+
+                    completed += 1
+                    print(f"  Completed group {completed}/{len(groups)}")
+                except Exception as e:
+                    print(f"  Error in tournament group: {e}")
+                    import traceback
+
+                    traceback.print_exc()
 
     def selection(self) -> List[BasicEuchreNN]:
         """Select parents for next generation using tournament selection based on ELO"""
