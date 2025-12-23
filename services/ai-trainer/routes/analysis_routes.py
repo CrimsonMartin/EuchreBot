@@ -440,13 +440,16 @@ def analyze_gameplay_strategy(model_id):
                     ],
                     "trump": trump_suit,
                     "current_trick": {"cards": []},
-                    "position": 0,
+                    "current_player_position": 0,
                     "dealer_position": 3,
                     "team1_score": 0,
                     "team2_score": 0,
                     "team1_tricks": 0,
                     "team2_tricks": 0,
                     "trump_caller_position": 0,
+                    "going_alone": False,
+                    "trump_round": 1,
+                    "turned_up_card": None,
                 }
             )
 
@@ -467,13 +470,16 @@ def analyze_gameplay_strategy(model_id):
                     ],
                     "trump": trump_suit,
                     "current_trick": {"cards": []},
-                    "position": 0,
+                    "current_player_position": 0,
                     "dealer_position": 3,
                     "team1_score": 0,
                     "team2_score": 0,
                     "team1_tricks": 0,
                     "team2_tricks": 0,
                     "trump_caller_position": 0,
+                    "going_alone": False,
+                    "trump_round": 1,
+                    "turned_up_card": None,
                 }
             )
 
@@ -500,13 +506,16 @@ def analyze_gameplay_strategy(model_id):
                             {"position": 2, "card": f"A{lead_suit}"},
                         ]
                     },
-                    "position": 3,
+                    "current_player_position": 3,
                     "dealer_position": 2,
                     "team1_score": 0,
                     "team2_score": 0,
                     "team1_tricks": 0,
                     "team2_tricks": 0,
                     "trump_caller_position": 2,
+                    "going_alone": False,
+                    "trump_round": 1,
+                    "turned_up_card": None,
                 }
             )
 
@@ -533,13 +542,16 @@ def analyze_gameplay_strategy(model_id):
                             {"position": 2, "card": f"10{lead_suit}"},
                         ]
                     },
-                    "position": 3,
+                    "current_player_position": 3,
                     "dealer_position": 2,
                     "team1_score": 0,
                     "team2_score": 0,
                     "team1_tricks": 0,
                     "team2_tricks": 0,
                     "trump_caller_position": 2,
+                    "going_alone": False,
+                    "trump_round": 1,
+                    "turned_up_card": None,
                 }
             )
 
@@ -566,13 +578,16 @@ def analyze_gameplay_strategy(model_id):
                             {"position": 2, "card": f"K{lead_suit}"},
                         ]
                     },
-                    "position": 3,
+                    "current_player_position": 3,
                     "dealer_position": 2,
                     "team1_score": 0,
                     "team2_score": 0,
                     "team1_tricks": 0,
                     "team2_tricks": 0,
                     "trump_caller_position": 2,
+                    "going_alone": False,
+                    "trump_round": 1,
+                    "turned_up_card": None,
                 }
             )
 
@@ -592,13 +607,16 @@ def analyze_gameplay_strategy(model_id):
                     ],
                     "trump": trump_suit,
                     "current_trick": {"cards": []},
-                    "position": 0,
+                    "current_player_position": 0,
                     "dealer_position": 3,
                     "team1_score": 0,
                     "team2_score": 0,
                     "team1_tricks": 1,
                     "team2_tricks": 0,
                     "trump_caller_position": 0,
+                    "going_alone": False,
+                    "trump_round": 1,
+                    "turned_up_card": None,
                     "completed_tricks": [
                         {
                             "cards": [
@@ -636,13 +654,16 @@ def analyze_gameplay_strategy(model_id):
                             {"position": 2, "card": f"Q{lead_suit}"},
                         ]
                     },
-                    "position": 3,
+                    "current_player_position": 3,
                     "dealer_position": 2,
                     "team1_score": 0,
                     "team2_score": 0,
                     "team1_tricks": 0,
                     "team2_tricks": 0,
                     "trump_caller_position": 2,
+                    "going_alone": False,
+                    "trump_round": 1,
+                    "turned_up_card": None,
                 }
             )
 
@@ -661,13 +682,16 @@ def analyze_gameplay_strategy(model_id):
                     ],
                     "trump": trump_suit,
                     "current_trick": {"cards": []},
-                    "position": 0,
+                    "current_player_position": 0,
                     "dealer_position": 3,
                     "team1_score": 0,
                     "team2_score": 0,
                     "team1_tricks": 0,
                     "team2_tricks": 0,
                     "trump_caller_position": 0,
+                    "going_alone": False,
+                    "trump_round": 1,
+                    "turned_up_card": None,
                 }
             )
 
