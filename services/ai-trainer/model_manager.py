@@ -102,16 +102,16 @@ class ModelManager:
             print(f"Error saving model: {e}")
             return None
 
-    def load_model(self, model_id: str) -> Optional[BasicEuchreNN]:
+    def load_model(self, model_id: str):
         """
         Load a model from filesystem by ID.
-        Handles both old (130 features) and new (161 features) architectures.
+        Uses the architecture type stored in the database to create the correct model.
 
         Args:
             model_id: UUID of the model to load
 
         Returns:
-            Loaded BasicEuchreNN model or None if not found
+            Loaded model (BasicEuchreNN, CNNEuchreNN, or TransformerEuchreNN) or None if not found
         """
         try:
             conn = self.get_db_connection()
@@ -135,45 +135,20 @@ class ModelManager:
                 return None
 
             model_path = row[0]
+            arch_type = row[1] or "basic"  # Use architecture from database
 
             if not os.path.exists(model_path):
                 print(f"Model file not found: {model_path}")
                 return None
 
-            # Load the state dict to inspect it
+            # Load the state dict
             state_dict = torch.load(model_path)
 
-            # Detect model architecture by checking first layer input size
-            # Old models: 130 features, New models: 161 features
-            first_layer_key = "card_network.0.weight"
-            if first_layer_key in state_dict:
-                input_size = state_dict[first_layer_key].shape[1]
+            # Create the correct model type using the architecture registry
+            from networks.architecture_registry import ArchitectureRegistry
 
-                if input_size == 130:
-                    # Old architecture
-                    print(f"Loading old architecture model (130 features)")
-                    model = BasicEuchreNN(
-                        input_size=130,
-                        card_hidden_sizes=[256, 128, 64],
-                        trump_hidden_sizes=[128, 64],
-                        discard_hidden_sizes=[64],
-                    )
-                elif input_size == 161:
-                    # New architecture
-                    print(f"Loading new architecture model (161 features)")
-                    model = BasicEuchreNN(
-                        input_size=161,
-                        card_hidden_sizes=[512, 256, 128, 64],
-                        trump_hidden_sizes=[256, 128, 64],
-                        discard_hidden_sizes=[128, 64],
-                    )
-                else:
-                    print(f"Unknown architecture with input size {input_size}")
-                    return None
-            else:
-                # Fallback to new architecture
-                print(f"Could not detect architecture, using new default")
-                model = BasicEuchreNN()
+            print(f"Loading model with architecture: {arch_type}")
+            model = ArchitectureRegistry.create_model(arch_type)
 
             # Load weights
             model.load_state_dict(state_dict)
