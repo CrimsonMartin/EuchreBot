@@ -20,7 +20,7 @@ class CNNEuchreNN(nn.Module):
 
     def __init__(
         self,
-        input_size=130,
+        input_size=161,
         card_output_size=24,
         trump_output_size=5,  # 4 suits + pass
         discard_output_size=24,
@@ -58,9 +58,9 @@ class CNNEuchreNN(nn.Module):
         self.card_bn2 = nn.BatchNorm1d(64)
         self.card_bn3 = nn.BatchNorm1d(32)
 
-        # MLP for non-card features (34 features: trump, position, scores, etc.)
+        # MLP for non-card features (73 features: trump, position, scores, etc.)
         self.card_mlp_features = nn.Sequential(
-            nn.Linear(34, 64),
+            nn.Linear(73, 64),
             nn.ReLU(),
             nn.Dropout(0.1),
         )
@@ -77,7 +77,7 @@ class CNNEuchreNN(nn.Module):
         )
 
         # Trump Selection Head - smaller CNN
-        # Input: 29 features (hand 24 + turned_up 4 + position 1)
+        # Input: 37 features (hand 24 + turned_up 4 + pos 1 + scores 2 + dealer 4 + is_dealer 1 + diff 1)
         self.trump_conv1 = nn.Conv1d(
             in_channels=1, out_channels=16, kernel_size=3, padding=1
         )
@@ -117,7 +117,7 @@ class CNNEuchreNN(nn.Module):
     def _reshape_card_features(self, x):
         """
         Reshape card-related features for CNN processing.
-        Input x: (batch, 130)
+        Input x: (batch, 161)
 
         Card features layout:
         - 0-23: hand (24)
@@ -125,24 +125,7 @@ class CNNEuchreNN(nn.Module):
         - 28-51: current trick cards (24)
         - 52-75: previous tricks cards (24)
         - 76-91: position suit encoding (16)
-        - 92-95: current position (4)
-        - 96-97: team scores (2)
-        - 98-99: tricks won (2)
-        - 100-103: dealer position (4)
-        - 104: going alone (1)
-        - 105-108: suit strength (4)
-        - 109: trump remaining (1)
-        - 110-113: trump caller (4)
-        - 114: is calling team (1)
-        - 115: trump round (1)
-        - 116-119: lead suit (4)
-        - 120-123: turned up suit (4)
-        - 124: score diff (1)
-        - 125: is dealer (1)
-        - 126: cards in hand (1)
-        - 127: trump in hand (1)
-        - 128: partner played (1)
-        - 129: lead player (1)
+        - 92-160: remaining features (69)
 
         We'll reshape card-related features (hand, trick, previous, position_suit) into 4 channels of 24 features
         """
@@ -162,16 +145,14 @@ class CNNEuchreNN(nn.Module):
             [hand, trick, previous, position_suit_padded], dim=1
         )
 
-        # Extract non-card features (34 features)
+        # Extract non-card features (73 features total)
         non_card_features = torch.cat(
             [
                 x[:, 24:28],  # trump suit (4)
-                x[:, 92:130],  # remaining features (38)
+                x[:, 92:161],  # remaining features (69)
             ],
             dim=1,
-        )[
-            :, :34
-        ]  # Take first 34
+        )
 
         return card_features, non_card_features
 
@@ -197,7 +178,7 @@ class CNNEuchreNN(nn.Module):
 
     def forward_trump(self, x):
         """Forward pass through the trump selection network"""
-        # Reshape for 1D conv: (batch, 1, 29)
+        # Reshape for 1D conv: (batch, 1, 37)
         x = x.unsqueeze(1)
 
         conv_out = self.relu(self.trump_conv1(x))

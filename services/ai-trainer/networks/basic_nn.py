@@ -52,7 +52,7 @@ class BasicEuchreNN(nn.Module):
 
         # Trump Selection Head (smaller network for trump decisions)
         trump_layers = []
-        prev_size = 29  # hand (24) + turned_up_card (4) + position (1)
+        prev_size = 37  # hand (24) + turned_up (4) + pos (1) + scores (2) + dealer (4) + is_dealer (1) + diff (1)
         for hidden_size in trump_hidden_sizes:
             trump_layers.append(nn.Linear(prev_size, hidden_size))
             trump_layers.append(nn.ReLU())
@@ -578,13 +578,17 @@ def encode_trump_state(game_state, turned_up_card=None) -> np.ndarray:
     """
     Encode state for trump selection decision.
 
-    Features (29 total):
+    Features (37 total):
     - Player's hand (24 features)
     - Turned up card suit (4 features - one-hot)
     - Player position relative to dealer (1 feature - normalized)
+    - Team scores (2 features - normalized)
+    - Dealer position (4 features - one-hot)
+    - Is player dealer (1 feature)
+    - Score differential (1 feature - normalized)
 
     Returns:
-        Numpy array of size 29
+        Numpy array of size 37
     """
     features = []
 
@@ -616,6 +620,29 @@ def encode_trump_state(game_state, turned_up_card=None) -> np.ndarray:
     dealer_pos = game_state.get("dealer_position", 0)
     relative_pos = (current_pos - dealer_pos) % 4
     features.append(relative_pos / 3.0)  # Normalize to 0-1
+
+    # Team scores (2 features - normalized to 0-1)
+    team1_score = game_state.get("team1_score", 0) / 10.0
+    team2_score = game_state.get("team2_score", 0) / 10.0
+    features.extend([team1_score, team2_score])
+
+    # Dealer position (4 features - one-hot)
+    dealer_encoding = np.zeros(4)
+    dealer_encoding[dealer_pos] = 1
+    features.extend(dealer_encoding)
+
+    # Is player dealer (1 feature)
+    is_dealer = 1.0 if current_pos == dealer_pos else 0.0
+    features.append(is_dealer)
+
+    # Score differential (1 feature - normalized)
+    score_diff = (
+        game_state.get("team1_score", 0) - game_state.get("team2_score", 0)
+    ) / 10.0
+    # Flip sign if player is on team 2 (positions 1, 3)
+    if current_pos % 2 == 1:
+        score_diff = -score_diff
+    features.append(score_diff)
 
     return np.array(features, dtype=np.float32)
 

@@ -40,7 +40,7 @@ class TransformerEuchreNN(nn.Module):
 
     def __init__(
         self,
-        input_size=130,
+        input_size=161,
         card_output_size=24,
         trump_output_size=5,  # 4 suits + pass
         discard_output_size=24,
@@ -90,7 +90,7 @@ class TransformerEuchreNN(nn.Module):
         )
 
         # Trump Selection Head - smaller transformer
-        self.trump_input_projection = nn.Linear(29, d_model // 2)
+        self.trump_input_projection = nn.Linear(37, d_model // 2)
         self.trump_pos_encoder = PositionalEncoding(d_model // 2)
 
         trump_encoder_layer = nn.TransformerEncoderLayer(

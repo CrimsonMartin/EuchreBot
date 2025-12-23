@@ -116,7 +116,7 @@ class GeneticAlgorithm:
         self.heating_rate = 1.2  # Reheat on stagnation
 
         # Architecture diversity tracking
-        self.architecture_enabled = False  # Enable multi-architecture support (SET TO FALSE TO USE ONLY BASIC MLP)
+        self.architecture_enabled = True  # Enable multi-architecture support (SET TO FALSE TO USE ONLY BASIC MLP)
         self.architecture_stats = {}  # Track performance by architecture
 
         # Card mapping for predictions
@@ -451,6 +451,17 @@ class GeneticAlgorithm:
                 team1_indices = [model_indices[i] for i in team1_local]
                 team2_indices = [model_indices[i] for i in team2_local]
 
+                # Calculate Margin of Victory (MOV) multiplier
+                # Standard ELO uses 1.0 for win, 0.0 for loss.
+                # We can scale the K-factor based on the score differential to reward dominant wins.
+                score_diff = abs(team1_score - team2_score)
+                # MOV multiplier: 1.0 for close games (10-9), up to ~1.5 for blowouts (10-0)
+                mov_multiplier = 1.0 + (score_diff / 20.0)
+
+                # Temporarily adjust K-factor for this update
+                original_k = self.elo_system.k_factor
+                self.elo_system.k_factor *= mov_multiplier
+
                 updated_ratings = self.elo_system.update_team_ratings(
                     team1_indices,
                     team2_indices,
@@ -458,6 +469,9 @@ class GeneticAlgorithm:
                     team1_score=team1_score,
                     team2_score=team2_score,
                 )
+
+                # Restore original K-factor
+                self.elo_system.k_factor = original_k
 
                 # Track changes
                 for idx in team1_indices + team2_indices:

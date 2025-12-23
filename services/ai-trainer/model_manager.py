@@ -34,7 +34,7 @@ class ModelManager:
         training_run_id: str,
         is_best: bool = False,
         elo_rating: float = 1500,
-    ) -> str:
+    ) -> Optional[str]:
         """
         Save a trained model to filesystem and database.
 
@@ -58,6 +58,11 @@ class ModelManager:
             model_path = os.path.join(self.models_dir, model_filename)
             torch.save(model.state_dict(), model_path)
 
+            # Get architecture type
+            from networks.architecture_registry import ArchitectureRegistry
+
+            arch_type = ArchitectureRegistry.get_architecture_type(model)
+
             # Save metadata to database
             conn = self.get_db_connection()
             cur = conn.cursor()
@@ -75,7 +80,7 @@ class ModelManager:
                     model_id,
                     name,
                     "v1.0",
-                    "BasicEuchreNN",
+                    arch_type,
                     generation,
                     training_run_id,
                     f'{{"fitness": {fitness}, "elo_rating": {elo_rating}}}',
@@ -200,7 +205,7 @@ class ModelManager:
             # Query for best models by fitness score
             cur.execute(
                 """
-                SELECT id, model_path, performance_metrics
+                SELECT id, model_path, performance_metrics, architecture
                 FROM ai_models
                 WHERE active = true 
                   AND model_path IS NOT NULL
@@ -219,6 +224,7 @@ class ModelManager:
             for row in rows:
                 model_id = row[0]
                 model_path = row[1]
+                arch_type = row[3] or "basic"
 
                 # Extract fitness from JSON
                 import json
@@ -228,10 +234,15 @@ class ModelManager:
 
                 # Load model
                 if os.path.exists(model_path):
-                    model = BasicEuchreNN()
-                    model.load_state_dict(torch.load(model_path))
-                    model.eval()
-                    best_models.append((model_id, model, fitness))
+                    from networks.architecture_registry import ArchitectureRegistry
+
+                    try:
+                        model = ArchitectureRegistry.create_model(arch_type)
+                        model.load_state_dict(torch.load(model_path))
+                        model.eval()
+                        best_models.append((model_id, model, fitness))
+                    except Exception as e:
+                        print(f"Error creating model of type {arch_type}: {e}")
 
             print(f"Loaded {len(best_models)} best models")
             return best_models
@@ -244,17 +255,17 @@ class ModelManager:
         self, population_size: int, seed_percentage: float = 0.25
     ) -> List[BasicEuchreNN]:
         """
-        Create a new population seeded with best models from previous runs.
+        Get best models from previous runs to seed a new population.
+        Only returns the actual seeded models, allowing the GA to fill the rest.
 
         Args:
             population_size: Total size of population to create
             seed_percentage: Percentage of population to seed (0.0 to 1.0)
 
         Returns:
-            List of BasicEuchreNN models
+            List of BasicEuchreNN models (only the seeds)
         """
         seed_count = int(population_size * seed_percentage)
-        new_count = population_size - seed_count
 
         population = []
 
@@ -266,12 +277,6 @@ class ModelManager:
             for model_id, model, fitness in best_models:
                 population.append(model)
                 print(f"  Seeded model {model_id[:8]} with fitness {fitness:.3f}")
-
-        # Fill remaining slots with new random models
-        remaining = population_size - len(population)
-        print(f"Creating {remaining} new random models")
-        for _ in range(remaining):
-            population.append(BasicEuchreNN())
 
         return population
 
@@ -350,7 +355,7 @@ class ModelManager:
             # Get the model with highest ELO rating
             cur.execute(
                 """
-                SELECT id, model_path, elo_rating
+                SELECT id, model_path, elo_rating, architecture
                 FROM ai_models
                 WHERE active = true 
                   AND model_path IS NOT NULL
@@ -361,22 +366,30 @@ class ModelManager:
             )
 
             row = cur.fetchone()
-            cur.close()
-            conn.close()
-
             if not row:
+                cur.close()
+                conn.close()
                 return None
 
             model_id = row[0]
             model_path = row[1]
             elo_rating = row[2]
+            arch_type = row[3] or "basic"
+
+            cur.close()
+            conn.close()
 
             # Load model
             if os.path.exists(model_path):
-                model = BasicEuchreNN()
-                model.load_state_dict(torch.load(model_path))
-                model.eval()
-                return (model_id, model, elo_rating)
+                from networks.architecture_registry import ArchitectureRegistry
+
+                try:
+                    model = ArchitectureRegistry.create_model(arch_type)
+                    model.load_state_dict(torch.load(model_path))
+                    model.eval()
+                    return (model_id, model, elo_rating)
+                except Exception as e:
+                    print(f"Error creating model of type {arch_type}: {e}")
 
             return None
 
@@ -393,7 +406,7 @@ class ModelManager:
         training_run_id: str,
         is_best: bool = False,
         elo_rating: float = 1500,
-    ) -> str:
+    ) -> Optional[str]:
         """
         Save a model with database locking to prevent race conditions in multi-instance training.
         Only saves if this model is better than the current best.
@@ -434,6 +447,11 @@ class ModelManager:
                 model_path = os.path.join(self.models_dir, model_filename)
                 torch.save(model.state_dict(), model_path)
 
+                # Get architecture type
+                from networks.architecture_registry import ArchitectureRegistry
+
+                arch_type = ArchitectureRegistry.get_architecture_type(model)
+
                 # Save metadata to database
                 cur.execute(
                     """
@@ -448,7 +466,7 @@ class ModelManager:
                         model_id,
                         name,
                         "v1.0",
-                        "BasicEuchreNN",
+                        arch_type,
                         generation,
                         training_run_id,
                         f'{{"fitness": {fitness}, "elo_rating": {elo_rating}}}',
