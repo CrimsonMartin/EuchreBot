@@ -17,9 +17,10 @@ class ArchitectureRegistry:
     """
 
     # Registry of available architectures
+    # NOTE: Only transformer enabled - basic and cnn disabled for better performance
     ARCHITECTURES: Dict[str, Type] = {
-        "basic": BasicEuchreNN,
-        "cnn": CNNEuchreNN,
+        # "basic": BasicEuchreNN,  # Disabled - transformer performs better
+        # "cnn": CNNEuchreNN,           # Disabled - transformer performs better
         "transformer": TransformerEuchreNN,
     }
 

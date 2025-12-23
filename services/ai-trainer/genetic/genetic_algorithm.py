@@ -116,8 +116,22 @@ class GeneticAlgorithm:
         self.heating_rate = 1.2  # Reheat on stagnation
 
         # Architecture diversity tracking
-        self.architecture_enabled = True  # Enable multi-architecture support (SET TO FALSE TO USE ONLY BASIC MLP)
+        self.architecture_enabled = True  # Enable architecture support (uses transformer-only for best performance)
         self.architecture_stats = {}  # Track performance by architecture
+
+        # Multi-objective fitness: Track per-model behavioral statistics
+        self.model_stats: Dict[int, Dict] = {}  # model_index -> stats dict
+
+        # Reward shaping parameters
+        self.reward_shaping_enabled = True
+        self.aggressive_win_bonus = (
+            0.20  # +20% ELO bonus for winning when your team called
+        )
+        self.passive_win_penalty = (
+            -0.15
+        )  # -15% penalty for winning when opponent called
+        self.euchre_bonus = 0.25  # +25% bonus for euchre (opponent called and lost)
+        self.forced_call_penalty = -0.10  # -10% penalty for forced dealer call
 
         # Card mapping for predictions
         self.all_cards = []
@@ -144,13 +158,15 @@ class GeneticAlgorithm:
         remaining = self.population_size - len(self.population)
         if remaining > 0:
             if self.architecture_enabled:
-                # Create diverse population with all architectures
+                # Create transformer-only population for best performance
                 new_models = ArchitectureRegistry.create_population(
-                    remaining, use_cuda=self.use_cuda
+                    remaining,
+                    architecture_distribution={"transformer": 1.0},
+                    use_cuda=self.use_cuda,
                 )
                 self.population.extend(new_models)
             else:
-                # Create basic models only
+                # Create basic models only (legacy mode)
                 while len(self.population) < self.population_size:
                     self.population.append(BasicEuchreNN(use_cuda=self.use_cuda))
 
@@ -170,7 +186,7 @@ class GeneticAlgorithm:
         self,
         team1_models: Tuple[BasicEuchreNN, BasicEuchreNN],
         team2_models: Tuple[BasicEuchreNN, BasicEuchreNN],
-    ) -> Tuple[int, int, int]:
+    ) -> Dict:
         """
         Play a single game with specified teams using neural networks for all decisions.
 
@@ -179,7 +195,11 @@ class GeneticAlgorithm:
             team2_models: Tuple of (model_pos1, model_pos3) for team 2
 
         Returns:
-            Tuple of (winning_team, team1_score, team2_score)
+            Dictionary with game results:
+            - winning_team: 1 or 2
+            - team1_score: final score
+            - team2_score: final score
+            - hands_played: list of hand results with trump calling info
         """
         # Create game
         game = EuchreGame(f"training-{random.randint(1000, 9999)}")
@@ -189,7 +209,23 @@ class GeneticAlgorithm:
             game.add_player(f"Player{i}", PlayerType.RANDOM_AI)
 
         # Map positions to models
+        # Positions: 0, 2 = Team 1; 1, 3 = Team 2
         models = [team1_models[0], team2_models[0], team1_models[1], team2_models[1]]
+
+        # Track hand-level statistics for reward shaping
+        hands_played = []
+        current_hand_info = {
+            "caller_position": None,
+            "calling_team": None,
+            "was_forced_call": False,
+            "trump_opportunities": {
+                0: 0,
+                1: 0,
+                2: 0,
+                3: 0,
+            },  # Per-position opportunities
+            "voluntary_calls": {0: 0, 1: 0, 2: 0, 3: 0},  # Per-position voluntary calls
+        }
 
         # Start first hand
         game.start_new_hand()
@@ -201,6 +237,9 @@ class GeneticAlgorithm:
 
             # Handle different game phases
             if game.state.phase == GamePhase.TRUMP_SELECTION_ROUND1:
+                # Track trump opportunity for this position
+                current_hand_info["trump_opportunities"][current_pos] += 1
+
                 # Use neural network for trump selection
                 # ROUND 1: Can only call the turned-up suit or pass
                 game_state_dict = game.get_state(perspective_position=current_pos)
@@ -223,12 +262,25 @@ class GeneticAlgorithm:
                         # Dealer must call - use turned up suit
                         if game.state.turned_up_card:
                             game.call_trump(game.state.turned_up_card.suit)
+                            # Track: forced call (dealer had to call)
+                            current_hand_info["caller_position"] = current_pos
+                            current_hand_info["calling_team"] = (
+                                1 if current_pos in [0, 2] else 2
+                            )
+                            current_hand_info["was_forced_call"] = True
                 else:
                     # Model wants to call (any output 0-3 means "call")
                     # In Round 1, we can only call the turned-up suit
                     try:
                         if game.state.turned_up_card:
                             game.call_trump(game.state.turned_up_card.suit)
+                            # Track: voluntary call in round 1
+                            current_hand_info["caller_position"] = current_pos
+                            current_hand_info["calling_team"] = (
+                                1 if current_pos in [0, 2] else 2
+                            )
+                            current_hand_info["was_forced_call"] = False
+                            current_hand_info["voluntary_calls"][current_pos] += 1
                         else:
                             # Shouldn't happen, but pass if no turned up card
                             game.pass_trump()
@@ -240,8 +292,16 @@ class GeneticAlgorithm:
                             # Dealer must call
                             if game.state.turned_up_card:
                                 game.call_trump(game.state.turned_up_card.suit)
+                                current_hand_info["caller_position"] = current_pos
+                                current_hand_info["calling_team"] = (
+                                    1 if current_pos in [0, 2] else 2
+                                )
+                                current_hand_info["was_forced_call"] = True
 
             elif game.state.phase == GamePhase.TRUMP_SELECTION_ROUND2:
+                # Track trump opportunity for this position (round 2)
+                current_hand_info["trump_opportunities"][current_pos] += 1
+
                 # Use neural network for trump selection (round 2)
                 game_state_dict = game.get_state(perspective_position=current_pos)
                 turned_up_card = (
@@ -258,10 +318,13 @@ class GeneticAlgorithm:
                     if game.state.turned_up_card
                     else Suit.CLUBS
                 )
+                is_dealer = (
+                    game.state.current_player_position == game.state.dealer_position
+                )
 
                 if decision_idx == 4:
                     # Try to pass
-                    if game.state.current_player_position == game.state.dealer_position:
+                    if is_dealer:
                         # Dealer must call - pick a suit that's not turned up
                         available_suits = [
                             s
@@ -274,11 +337,16 @@ class GeneticAlgorithm:
                             if s != turned_up_suit
                         ]
                         game.call_trump(random.choice(available_suits))
+                        # Track: forced dealer call in round 2 (VERY passive)
+                        current_hand_info["caller_position"] = current_pos
+                        current_hand_info["calling_team"] = (
+                            1 if current_pos in [0, 2] else 2
+                        )
+                        current_hand_info["was_forced_call"] = True
                     else:
                         try:
                             game.pass_trump()
                         except:
-                            # Shouldn't happen but handle it
                             available_suits = [
                                 s
                                 for s in [
@@ -290,6 +358,11 @@ class GeneticAlgorithm:
                                 if s != turned_up_suit
                             ]
                             game.call_trump(random.choice(available_suits))
+                            current_hand_info["caller_position"] = current_pos
+                            current_hand_info["calling_team"] = (
+                                1 if current_pos in [0, 2] else 2
+                            )
+                            current_hand_info["was_forced_call"] = True
                 else:
                     # Call the selected suit (must not be turned up suit)
                     suit_map = [Suit.CLUBS, Suit.DIAMONDS, Suit.HEARTS, Suit.SPADES]
@@ -297,6 +370,13 @@ class GeneticAlgorithm:
 
                     if selected_suit != turned_up_suit:
                         game.call_trump(selected_suit)
+                        # Track: voluntary call in round 2
+                        current_hand_info["caller_position"] = current_pos
+                        current_hand_info["calling_team"] = (
+                            1 if current_pos in [0, 2] else 2
+                        )
+                        current_hand_info["was_forced_call"] = False
+                        current_hand_info["voluntary_calls"][current_pos] += 1
                     else:
                         # Invalid choice, pick different suit
                         available_suits = [
@@ -309,16 +389,23 @@ class GeneticAlgorithm:
                             ]
                             if s != turned_up_suit
                         ]
-                        if (
-                            game.state.current_player_position
-                            == game.state.dealer_position
-                        ):
+                        if is_dealer:
                             game.call_trump(random.choice(available_suits))
+                            current_hand_info["caller_position"] = current_pos
+                            current_hand_info["calling_team"] = (
+                                1 if current_pos in [0, 2] else 2
+                            )
+                            current_hand_info["was_forced_call"] = True
                         else:
                             try:
                                 game.pass_trump()
                             except:
                                 game.call_trump(random.choice(available_suits))
+                                current_hand_info["caller_position"] = current_pos
+                                current_hand_info["calling_team"] = (
+                                    1 if current_pos in [0, 2] else 2
+                                )
+                                current_hand_info["was_forced_call"] = True
 
             elif game.state.phase == GamePhase.DEALER_DISCARD:
                 # Use neural network for dealer discard
@@ -394,12 +481,28 @@ class GeneticAlgorithm:
                 # Start new hand
                 game.start_new_hand()
 
-        # Return results
+        # Return results as dictionary with extended info for reward shaping
         team1_score = game.state.team1_score
         team2_score = game.state.team2_score
         winning_team = 1 if team1_score >= 10 else 2
 
-        return winning_team, team1_score, team2_score
+        # Store final hand info
+        hands_played.append(copy.deepcopy(current_hand_info))
+
+        # Determine if euchre occurred (calling team lost)
+        calling_team = current_hand_info.get("calling_team")
+        was_euchred = calling_team is not None and calling_team != winning_team
+
+        return {
+            "winning_team": winning_team,
+            "team1_score": team1_score,
+            "team2_score": team2_score,
+            "calling_team": calling_team,
+            "was_forced_call": current_hand_info.get("was_forced_call", False),
+            "was_euchred": was_euchred,
+            "trump_opportunities": current_hand_info.get("trump_opportunities", {}),
+            "voluntary_calls": current_hand_info.get("voluntary_calls", {}),
+        }
 
     def run_round_robin_tournament_elo(
         self, models: List[BasicEuchreNN], model_indices: List[int] | None = None
@@ -443,24 +546,43 @@ class GeneticAlgorithm:
             pairings
         ):
             for game_num in range(self.games_per_pairing):
-                winning_team, team1_score, team2_score = self.play_game_with_teams(
-                    team1, team2
-                )
+                # Play game and get extended results
+                game_result = self.play_game_with_teams(team1, team2)
+
+                winning_team = game_result["winning_team"]
+                team1_score = game_result["team1_score"]
+                team2_score = game_result["team2_score"]
+                calling_team = game_result["calling_team"]
+                was_forced_call = game_result["was_forced_call"]
+                was_euchred = game_result["was_euchred"]
 
                 # Update ELO ratings for this game
                 team1_indices = [model_indices[i] for i in team1_local]
                 team2_indices = [model_indices[i] for i in team2_local]
 
                 # Calculate Margin of Victory (MOV) multiplier
-                # Standard ELO uses 1.0 for win, 0.0 for loss.
-                # We can scale the K-factor based on the score differential to reward dominant wins.
                 score_diff = abs(team1_score - team2_score)
-                # MOV multiplier: 1.0 for close games (10-9), up to ~1.5 for blowouts (10-0)
                 mov_multiplier = 1.0 + (score_diff / 20.0)
+
+                # Apply REWARD SHAPING based on trump calling behavior
+                reward_multiplier = 1.0
+                if self.reward_shaping_enabled and calling_team is not None:
+                    if winning_team == calling_team:
+                        # Winning team called trump - reward aggressive play!
+                        if was_forced_call:
+                            # Forced call (dealer had no choice) - small penalty
+                            reward_multiplier += self.forced_call_penalty
+                        else:
+                            # Voluntary call that won - big bonus!
+                            reward_multiplier += self.aggressive_win_bonus
+                    else:
+                        # Defending team won (calling team lost = euchre)
+                        # Reward defending team for good defense
+                        reward_multiplier += self.euchre_bonus
 
                 # Temporarily adjust K-factor for this update
                 original_k = self.elo_system.k_factor
-                self.elo_system.k_factor *= mov_multiplier
+                self.elo_system.k_factor *= mov_multiplier * reward_multiplier
 
                 updated_ratings = self.elo_system.update_team_ratings(
                     team1_indices,
@@ -745,8 +867,10 @@ class GeneticAlgorithm:
             num_immigrants = max(1, int(self.population_size * 0.1))
             for i in range(num_immigrants):
                 if self.architecture_enabled:
-                    # Create random model with random architecture
-                    new_model = ArchitectureRegistry.create_random_model(self.use_cuda)
+                    # Create transformer model (best performing architecture)
+                    new_model = ArchitectureRegistry.create_model(
+                        "transformer", self.use_cuda
+                    )
                 else:
                     new_model = BasicEuchreNN(use_cuda=self.use_cuda)
 
@@ -758,24 +882,26 @@ class GeneticAlgorithm:
             # Level 2: Strong intervention (10 generations stagnant)
             print(f"  🔥 DIVERSITY BOOST LEVEL 2:")
             print(f"     - Increasing mutation rate to {self.mutation_rate:.3f}")
-            print(f"     - Architecture switching for 25% of population")
+            print(f"     - Replacing 25% of population with new transformers")
             print(f"     - Temperature: {self.temperature:.2f}")
 
-            # Switch architectures for 25% of population
+            # Replace 25% of population with new transformer models
             if self.architecture_enabled:
                 num_to_switch = max(1, int(self.population_size * 0.25))
                 for i in range(num_to_switch):
                     # Pick a random non-elite model
                     idx = random.randint(self.elite_size, len(self.population) - 1)
-                    # Create new model with different architecture
-                    new_model = ArchitectureRegistry.create_random_model(self.use_cuda)
+                    # Create new transformer model (best performing architecture)
+                    new_model = ArchitectureRegistry.create_model(
+                        "transformer", self.use_cuda
+                    )
                     self.population[idx] = new_model
 
         elif level >= 3:
             # Level 3: Nuclear option (15+ generations stagnant)
             print(f"  💥 DIVERSITY BOOST LEVEL 3 (NUCLEAR):")
             print(f"     - Keeping only top 10% elite")
-            print(f"     - Generating 50% new random models")
+            print(f"     - Generating 50% new transformer models")
             print(f"     - Resetting temperature to {self.initial_temperature}")
 
             # Keep only top 10%
@@ -787,13 +913,15 @@ class GeneticAlgorithm:
             elite_count = max(2, int(self.population_size * 0.1))
             elites = [copy.deepcopy(model) for model, _ in sorted_pop[:elite_count]]
 
-            # Generate 50% completely new models
+            # Generate 50% completely new transformer models
             new_count = int(self.population_size * 0.5)
             new_models = []
             if self.architecture_enabled:
-                # Equal distribution across architectures
+                # Create transformer-only models (best performing architecture)
                 new_models = ArchitectureRegistry.create_population(
-                    new_count, use_cuda=self.use_cuda
+                    new_count,
+                    architecture_distribution={"transformer": 1.0},
+                    use_cuda=self.use_cuda,
                 )
             else:
                 new_models = [

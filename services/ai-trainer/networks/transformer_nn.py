@@ -44,10 +44,10 @@ class TransformerEuchreNN(nn.Module):
         card_output_size=24,
         trump_output_size=5,  # 4 suits + pass
         discard_output_size=24,
-        d_model=128,
+        d_model=32,
         nhead=4,
         num_layers=2,
-        dim_feedforward=256,
+        dim_feedforward=32,
         use_cuda=True,
     ):
         super(TransformerEuchreNN, self).__init__()
