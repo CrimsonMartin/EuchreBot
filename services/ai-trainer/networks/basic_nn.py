@@ -21,9 +21,9 @@ class BasicEuchreNN(nn.Module):
     def __init__(
         self,
         input_size=161,  # Increased from 130 to 161 with enhanced features
-        card_hidden_sizes=[512, 256, 128, 64],  # Increased from [256, 128, 64]
-        trump_hidden_sizes=[256, 128, 64],  # Increased from [128, 64]
-        discard_hidden_sizes=[128, 64],  # Increased from [64]
+        card_hidden_sizes=[256, 128, 64],  # Increased from [256, 128, 64]
+        trump_hidden_sizes=[128, 64],  # Increased from [128, 64]
+        discard_hidden_sizes=[64],  # Increased from [64]
         card_output_size=24,
         trump_output_size=5,  # 4 suits + pass
         discard_output_size=24,

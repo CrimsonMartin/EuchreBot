@@ -18,6 +18,9 @@
   "mounts": [
     "source=${localEnv:HOME}${localEnv:USERPROFILE}/.ssh,target=/home/vscode/.ssh,readonly,type=bind,consistency=cached"
   ],
+  "remoteEnv": {
+    "LD_LIBRARY_PATH": "${containerEnv:LD_LIBRARY_PATH}:/opt/conda/lib/python3.11/site-packages/nvidia/nvjitlink/lib"
+  },
   "runArgs": [
     "--gpus=all"
   ],
